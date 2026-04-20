@@ -30,7 +30,8 @@ const settingsDialog = $("settings-dialog");
 const apiUrlInput = $("api-url-input");
 const apiSaveBtn = $("api-save");
 
-selfieDrop.addEventListener("click", () => selfieInput.click());
+// NOTE: do NOT call selfieInput.click() here — the <label> wrapper already
+// opens the picker natively, so adding an extra .click() shows it twice.
 selfieInput.addEventListener("change", (e) => handleSelfie(e.target.files[0]));
 ["dragenter", "dragover"].forEach((ev) =>
   selfieDrop.addEventListener(ev, (e) => {
@@ -89,7 +90,7 @@ aiGenerateBtn.addEventListener("click", async () => {
 
   aiGenerateBtn.disabled = true;
   aiProgress.hidden = false;
-  setAiProgress(5, "🖼️ 縮圖中…");
+  setAiProgress(5, "縮圖中…");
 
   let tick = null;
   try {
@@ -105,8 +106,8 @@ aiGenerateBtn.addEventListener("click", async () => {
       const pct = Math.min(85, 15 + (elapsed / ESTIMATED_GEN_SECONDS) * 70);
       const remain = Math.max(0, Math.ceil(ESTIMATED_GEN_SECONDS - elapsed));
       const msg = remain > 0
-        ? `🎨 Gemini 作畫中… 已 ${Math.ceil(elapsed)}s，預估還有約 ${remain}s`
-        : `🎨 還在畫… 已 ${Math.ceil(elapsed)}s（偶爾會超過預估，再等一下）`;
+        ? `Gemini 作畫中… 已 ${Math.ceil(elapsed)}s，預估還有約 ${remain}s`
+        : `仍在作畫… 已 ${Math.ceil(elapsed)}s（偶爾會超過預估，再等一下）`;
       setAiProgress(pct, msg);
     }, 500);
 
@@ -124,7 +125,7 @@ aiGenerateBtn.addEventListener("click", async () => {
       throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 300)}`);
     }
 
-    setAiProgress(90, "📦 載入結果…");
+    setAiProgress(90, "載入結果…");
     const data = await resp.json();
     const gridUrl = `data:${data.mimeType};base64,${data.data}`;
     const img = await loadImage(gridUrl);
@@ -138,11 +139,11 @@ aiGenerateBtn.addEventListener("click", async () => {
     $("step-tiles").hidden = false;
     $("step-video").hidden = false;
 
-    setAiProgress(100, "✅ 生成完成，已拆好 9 張");
+    setAiProgress(100, "生成完成，已拆好 9 張");
     $("step-upload").scrollIntoView({ behavior: "smooth" });
   } catch (err) {
     console.error(err);
-    setAiProgress(0, `❌ 失敗：${err.message}`);
+    setAiProgress(0, `失敗：${err.message}`);
   } finally {
     if (tick) clearInterval(tick);
     aiGenerateBtn.disabled = false;
@@ -182,7 +183,7 @@ const sourcePreview = $("source-preview");
 const sourceImg = $("source-img");
 const clearBtn = $("clear-btn");
 
-dropZone.addEventListener("click", () => fileInput.click());
+// The <label id="drop-zone"> already opens the picker — no extra click handler.
 fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
 
 ["dragenter", "dragover"].forEach((ev) =>

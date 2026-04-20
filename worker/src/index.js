@@ -6,25 +6,84 @@
 const DEFAULT_MODEL = "gemini-3.1-flash-image-preview";
 const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB decoded image size
 
-const DEFAULT_PROMPT = `Create ONE single square image that is a 3x3 grid (3 rows × 3 columns, 9 equal square tiles) of portraits of the SAME person from the reference photo. Each tile must show a DRAMATICALLY different, theatrical, exaggerated facial expression. The nine expressions must look OBVIOUSLY different at a glance — no two tiles should be confusable.
+// Pool of expression descriptors. We randomly pick 9 per request so every
+// call returns a different mix — visibly distinct tiles each time you spin.
+// 36 expressions + 9 environmental/weather reactions = 45 entries.
+// C(45,9) × 9! ≈ 3.3×10^12 possible ordered tiles.
+const EXPRESSION_POOL = [
+  "ECSTATIC LAUGHTER — head tilted back slightly, eyes squeezed shut, mouth wide open showing upper teeth, big joyful grin",
+  "HYSTERICAL LAUGHTER WITH TEARS — eyes shut with laugh-tears streaming, mouth wide open laughing, cheeks flushed red",
+  "BAWLING CRY — eyes tightly shut with visible tears streaming down cheeks, eyebrows slanted up in the middle, mouth open in a wailing square shape",
+  "TEARY-EYED SADNESS — eyes glistening with unshed tears, corners of the mouth pulled down, cheeks slightly flushed, quiet grief",
+  "FURIOUS ANGER — brows pulled sharply down and together, nostrils flared, teeth gritted and bared, eyes glaring hard",
+  "PASSIONATE SHOUT — mouth wide open yelling, eyes flashing with intensity, veins on temple, lost in the moment",
+  "POUTING SULK — lower lip pushed out in an exaggerated pout, eyebrows drawn together in mild protest, eyes narrowed",
+  "TERRIFIED SHOCK — eyes bulging wide open (whites visible), eyebrows raised high, mouth stretched into a large round \"O\", face tense",
+  "COMICAL JAW DROP — jaw literally dropped down low, eyes popping out, cartoonishly shocked",
+  "MILD SURPRISE — eyebrows lifted, eyes slightly widened, mouth parted a little in pleasant surprise",
+  "STARSTRUCK AWE — eyes wide and sparkling with wonder, mouth open in a soft \"oh!\", cheeks softly flushed",
+  "REVOLTED DISGUST — nose heavily scrunched up, upper lip curled, tongue sticking out as if saying \"yuck\", one eye half closed",
+  "CRINGING EMBARRASSMENT — teeth showing in an awkward grimace, nose wrinkled, eyes squinting, shoulders slightly raised",
+  "GUILTY AWKWARD — tight-lipped grimace, eyes darting sideways, corner of mouth stretched thin in a 'whoops' look",
+  "BAFFLED CONFUSION — one eyebrow sharply raised (other lowered), eyes looking up and to the side, lips pursed tight to one side",
+  "PURSED-LIP SKEPTICISM — mouth pushed to one side in a doubting pucker, one brow cocked high, clearly unconvinced",
+  "DEVIOUS SMIRK — only one corner of mouth pulled up in a sly half-smile, eyes narrowed and looking sideways, one brow cocked, mischievous",
+  "MYSTERIOUS SMILE — cryptic closed-lip curve, one eye half-closed, as if hiding a secret",
+  "PLAYFUL WINK — one eye winked fully shut, the other open and bright, corner of mouth tugged up into a cheeky grin",
+  "RASPBERRY TONGUE — tongue sticking straight out flat, eyes crossed playfully, silly face",
+  "GOOFY WIDE GRIN — huge teeth-showing grin stretching ear to ear, squinty happy eyes, cheeks pushed up",
+  "BLOWING A KISS — lips puckered forward in a clear kiss shape, eyes soft and half-closed, dreamy romantic vibe",
+  "HEART-EYES ADORATION — eyes wide and dreamy staring off, mouth curled in a soft melting smile, cheeks flushed, utterly smitten",
+  "COQUETTISH SIDE-EYE — eyes glancing sideways with a knowing look, lips slightly parted, flirty and sly",
+  "SHY BLUSH — cheeks deeply flushed pink, eyes glancing down and away, lips pressed together in a small bashful smile",
+  "BEAMING PRIDE — broad closed-mouth smile, eyes crinkled happily, content and proud",
+  "BLANK ZONE-OUT — completely vacant stare, eyes unfocused looking into the distance, mouth slightly agape, zero emotion",
+  "DEADPAN — totally flat face, dead expressionless eyes, mouth in a perfectly straight line, 100% done",
+  "ROLLING EYES — eyes rolled dramatically upward, one side of the mouth pulled into an unimpressed line, exasperated",
+  "SLEEPY DROWSE — eyelids drooping heavily, mouth open mid-yawn, head tilted slightly, exhausted",
+  "TRIUMPHANT SMUG — eyes closed in self-satisfaction, chin lifted, small proud closed-lip smile, exuding \"I knew it\"",
+  "FOCUSED CONCENTRATION — brows furrowed in thought, lips pressed together tightly (or biting lower lip), laser-focused eyes",
+  "DETERMINED RESOLVE — chin lifted, mouth firm in a resolute line, eyes steady forward, unshakeable",
+  "PUFFY CHEEKS — cheeks comically puffed out holding breath, lips pursed tightly, a playful 'hmph' vibe",
+  "NERVOUS GULP — wide anxious eyes, mouth in a small tight circle, a single sweat bead, tense",
+  "SILENT SCREAM — mouth stretched wide in horror, eyes bulging, but completely mute",
+  // --- environmental / weather reactions (hair/skin may temporarily change; identity still preserved) ---
+  "ELECTROCUTED — hair comically standing on end from static, pupils tiny with mouth agape in a dazed 'o', soft yellow spark halos around the head",
+  "STRUCK BY LIGHTNING — brilliant flash washing half the face, hair crackling upward with small blue electric arcs, eyes wide and dazed, jaw slack",
+  "BLASTED BY STRONG WIND — hair streaming hard to one side, eyes squinted against the gust, cheeks rippling with wind pressure, lips pursed tight",
+  "DRENCHED IN RAIN — water droplets all over the face, hair soaking wet and plastered to forehead, eyelashes heavy with water, eyes slightly glum",
+  "CAUGHT IN SNOWFALL — snowflakes resting on eyelashes and hair, cheeks and nose tipped pink with cold, a soft puff of visible breath, gentle smile",
+  "SHIVERING COLD — teeth lightly chattering, lips a touch bluish, a plume of visible breath escaping, eyes watery and scrunched, subtle shiver",
+  "SWELTERING HEAT — face glistening with sweat, hair damp at the temples, cheeks flushed red, tongue lolling out panting, heavy lidded exhaustion",
+  "SUN-DAZZLED — squinting hard against blinding light, one eye more squeezed shut than the other, tiny sparkles of sun glare on the skin",
+  "GOOSEBUMPS GASP — sudden sharp intake of breath, eyes wide and startled, fine goosebumps visible on the neck, hair slightly raised at the roots",
+];
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildPrompt() {
+  const picks = shuffle(EXPRESSION_POOL).slice(0, 9);
+  const numbered = picks.map((line, i) => `${i + 1}. ${line}`).join("\n");
+  return `Create ONE single square image that is a 3x3 grid (3 rows × 3 columns, 9 equal square tiles) of portraits of the SAME person from the reference photo. Each tile must show a DRAMATICALLY different, theatrical, exaggerated facial expression. The nine expressions must look OBVIOUSLY different at a glance — no two tiles should be confusable.
 
 Tile-by-tile specification (mouth shape + eyes + brows must all differ):
 
-1. ECSTATIC LAUGHTER — head tilted back slightly, eyes squeezed shut, mouth wide open showing upper teeth, big grin.
-2. BAWLING CRY — eyes tightly shut with visible tears streaming down cheeks, eyebrows slanted up in the middle, mouth open in a wailing square shape.
-3. FURIOUS ANGER — brows pulled sharply down and together, nostrils flared, teeth gritted and bared, eyes glaring hard.
-4. TERRIFIED SHOCK — eyes bulging wide open (whites visible), eyebrows raised high, mouth stretched into a large round "O", face tense.
-5. REVOLTED DISGUST — nose heavily scrunched up, upper lip curled, tongue sticking out as if saying "yuck", one eye half closed.
-6. BAFFLED CONFUSION — one eyebrow sharply raised (other lowered), eyes looking up and to the side, lips pursed tight to one side.
-7. DEVIOUS SMIRK — only one corner of mouth pulled up in a sly half-smile, eyes narrowed and looking sideways, one brow cocked. Looks mischievous.
-8. BLOWING A KISS — lips puckered forward in a clear kiss shape, eyes soft and half-closed, dreamy romantic vibe.
-9. BLANK ZONE-OUT — completely vacant stare, eyes unfocused looking into the distance, mouth slightly agape, zero emotion, totally spaced-out.
+${numbered}
 
 Critical requirements:
 - Each expression must be EXAGGERATED and theatrical (like acting class, not subtle). A passing viewer should instantly tell every tile apart.
-- Keep the SAME person, same hairstyle, same clothing, same lighting, same clean background across ALL 9 tiles.
+- Identity is sacred: keep the SAME face, skin tone, hair COLOR, base hairstyle, clothing, and background across all tiles.
+- Environmental tiles (lightning, rain, snow, wind, heat, cold, etc.) MAY temporarily alter the hair (wet, windblown, standing on end) and skin (wet, flushed, frosted) — this is expected. The PERSON must still be clearly recognizable as the same individual from the reference photo.
 - Do NOT repeat a similar expression. No two tiles with the same mouth shape or eye state.
 - Output: ONE seamless 1:1 square image of the 3x3 grid. No borders, no captions, no text, no numbers.`;
+}
 
 function corsHeaders(origin) {
   return {
@@ -82,7 +141,7 @@ export default {
     const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
     const chosenPrompt = typeof prompt === "string" && prompt.trim()
       ? prompt
-      : DEFAULT_PROMPT;
+      : buildPrompt();
 
     const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
 
