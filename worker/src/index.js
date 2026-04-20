@@ -79,11 +79,15 @@ function poolManifest() {
   }));
 }
 
+const RANDOM_WEATHER_CHANCE = 0.5;
+
 function buildPrompt(slots) {
-  // slots: length-9 array; each item is null or an object:
-  //   { exprId?: number, exprCustom?: string, weatherId?: number }
-  // Expression part: exprCustom > exprId > random emotion (0..EMOTION_COUNT-1)
-  // Weather part:    weatherId  > none  (added with " + " separator)
+  // slots: length-9 array; each item is null (fully random) or an object:
+  //   { exprId?, exprCustom?, weatherId?, weatherNone? }
+  // Expression (default random from emotion subpool):
+  //   exprCustom > exprId > random emotion
+  // Weather (default: RANDOM_WEATHER_CHANCE to roll one in):
+  //   weatherId > weatherNone (force none) > random-or-none
   const normalized = Array.isArray(slots) && slots.length === 9
     ? slots
     : new Array(9).fill(null);
@@ -101,9 +105,11 @@ function buildPrompt(slots) {
       .filter((e) => !usedEmotionIds.has(e.id))
   );
 
+  const weatherPool = EXPRESSION_POOL.slice(EMOTION_COUNT);
+
   const lines = normalized.map((slot) => {
     slot = slot || {};
-    // Expression part
+    // Expression
     let expr;
     if (typeof slot.exprCustom === "string" && slot.exprCustom.trim()) {
       expr = `CUSTOM — ${slot.exprCustom.trim()}`;
@@ -116,7 +122,7 @@ function buildPrompt(slots) {
     } else {
       expr = (randomEmotionQueue.pop() || { desc: "" }).desc;
     }
-    // Weather part (optional)
+    // Weather
     let weather = "";
     if (
       Number.isInteger(slot.weatherId) &&
@@ -124,23 +130,33 @@ function buildPrompt(slots) {
       slot.weatherId < EXPRESSION_POOL.length
     ) {
       weather = EXPRESSION_POOL[slot.weatherId];
+    } else if (!slot.weatherNone && Math.random() < RANDOM_WEATHER_CHANCE) {
+      weather = weatherPool[Math.floor(Math.random() * weatherPool.length)];
     }
     return weather ? `${expr} + ${weather}` : expr;
   });
 
-  const numbered = lines.map((line, i) => `${i + 1}. ${line}`).join("\n");
-  return `Create ONE single square image that is a 3x3 grid (3 rows × 3 columns, 9 equal square tiles) of portraits of the SAME person from the reference photo. Each tile must show a DRAMATICALLY different, theatrical, exaggerated facial expression. The nine expressions must look OBVIOUSLY different at a glance — no two tiles should be confusable.
+  // Lowercase, dashless list — avoids Gemini transcribing the descriptors
+  // as visible labels on each tile.
+  const bullets = lines
+    .map((line) => "• " + line.toLowerCase())
+    .join("\n");
 
-Tile-by-tile specification (mouth shape + eyes + brows must all differ). Any tile written as "EXPRESSION + WEATHER" means BOTH states simultaneously — e.g. "ECSTATIC LAUGHTER + DRENCHED IN RAIN" = laughing hysterically while getting poured on. Render both layers in the same tile:
+  return `Create a single 3×3 grid photograph: 3 rows × 3 columns of 9 equal-size square portraits of the same person from the reference photo. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
 
-${numbered}
+Reading left-to-right, top-to-bottom, the nine tiles are:
 
-Critical requirements:
-- Each expression must be EXAGGERATED and theatrical (like acting class, not subtle). A passing viewer should instantly tell every tile apart.
-- Identity is sacred: keep the SAME face, skin tone, hair COLOR, base hairstyle, clothing, and background across all tiles.
-- Environmental tiles (lightning, rain, snow, wind, heat, cold, etc.) MAY temporarily alter the hair (wet, windblown, standing on end) and skin (wet, flushed, frosted) — this is expected. The PERSON must still be clearly recognizable as the same individual from the reference photo.
-- Do NOT repeat a similar expression. No two tiles with the same mouth shape or eye state.
-- Output: ONE seamless 1:1 square image of the 3x3 grid. No borders, no captions, no text, no numbers.`;
+${bullets}
+
+A bullet written as "<state> + <weather>" means the tile shows both at once — e.g. "ecstatic laughter + drenched in rain" = the person laughing hysterically while being poured on. Render both layers in the same tile.
+
+Identity stays constant across every tile: same face, skin tone, hair colour, base hairstyle, clothing, and background as the reference. Weather bullets (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin (wet, flushed, frosted) — that is expected. The PERSON must still be clearly the same individual.
+
+OUTPUT RULES — strictly enforced:
+- Pure photography only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, or arrows anywhere on the image.
+- Do NOT write the expression names on the tiles. The bullets above are instructions for you, not text to paint.
+- No borders, gutters, or dividers between tiles — it is one seamless 1:1 image.
+- Two tiles with the same mouth shape or same eye state are NOT allowed.`;
 }
 
 function corsHeaders(origin) {

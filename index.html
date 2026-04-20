@@ -105,15 +105,8 @@
 
 <main>
   <section class="card" id="step-ai-gen">
-    <div class="card-header">
-      <h2>⓪ 從自拍生成 3×3（AI）</h2>
-      <button class="icon-btn" id="settings-btn" title="API 設定" aria-label="API 設定">
-        <svg class="btn-icon"><use href="#i-gear"/></svg>
-      </button>
-    </div>
-    <p class="hint">上傳一張清楚的自拍，AI 會自動產出 9 種誇張表情的 3×3 圖。
-      <button type="button" class="link-btn" id="open-settings-link">點這裡自訂 9 格表情</button>（或隨機）。
-    </p>
+    <h2>⓪ 從自拍生成 3×3（AI）</h2>
+    <p class="hint">上傳一張清楚的自拍，AI 會自動產出 9 種誇張表情的 3×3 圖。</p>
     <p class="hint coffee-hint">
       <svg class="inline-icon"><use href="#i-coffee"/></svg>
       這個 AI 功能由作者付費呼叫 Gemini — 覺得好玩請
@@ -131,6 +124,11 @@
         <svg class="btn-icon"><use href="#i-refresh"/></svg>
         換一張自拍
       </button>
+    </div>
+
+    <div class="slot-status" id="slot-status">
+      <span class="slot-status-text" id="slot-status-text">🎲 目前：全部 9 格隨機</span>
+      <button type="button" class="link-btn" id="open-settings-link">自訂 9 格</button>
     </div>
 
     <button class="primary" id="ai-generate-btn" disabled>

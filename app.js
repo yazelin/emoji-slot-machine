@@ -74,11 +74,11 @@ const aiProgress = $("ai-progress");
 const aiBarFill = $("ai-bar-fill");
 const aiProgressText = $("ai-progress-text");
 
-const settingsBtn = $("settings-btn");
 const settingsDialog = $("settings-dialog");
 const slotGrid = $("slot-grid");
 const slotsResetBtn = $("slots-reset");
 const openSettingsLink = $("open-settings-link");
+const slotStatusText = $("slot-status-text");
 
 // NOTE: do NOT call selfieInput.click() here — the <label> wrapper already
 // opens the picker natively, so adding an extra .click() shows it twice.
@@ -108,8 +108,8 @@ selfieClear.addEventListener("click", () => {
   aiGenerateBtn.disabled = true;
 });
 
-settingsBtn.addEventListener("click", openSettings);
 if (openSettingsLink) openSettingsLink.addEventListener("click", openSettings);
+refreshSlotStatus();
 
 async function openSettings() {
   await ensurePoolLoaded();
@@ -151,8 +151,35 @@ if (slotsCopyBtn) {
 settingsDialog.addEventListener("close", () => {
   if (settingsDialog.returnValue === "save") {
     saveSlotConfig(readSlotConfigFromGrid());
+    refreshSlotStatus();
   }
 });
+
+function refreshSlotStatus() {
+  if (!slotStatusText) return;
+  const cfg = loadSlotConfig();
+  let exprCustomised = 0;  // exprId or exprCustom
+  let weatherPinned = 0;   // weatherId set
+  let weatherOff = 0;      // weatherNone
+  for (const slot of cfg) {
+    if (!slot) continue;
+    if (Number.isInteger(slot.exprId) || typeof slot.exprCustom === "string") {
+      exprCustomised += 1;
+    }
+    if (Number.isInteger(slot.weatherId)) weatherPinned += 1;
+    else if (slot.weatherNone) weatherOff += 1;
+  }
+  if (exprCustomised === 0 && weatherPinned === 0 && weatherOff === 0) {
+    slotStatusText.textContent = "🎲 目前：9 格全隨機（表情 + 有時會出現天氣）";
+    return;
+  }
+  const parts = [];
+  if (exprCustomised > 0) parts.push(`${exprCustomised} 格指定表情`);
+  if (weatherPinned > 0) parts.push(`${weatherPinned} 格指定天氣`);
+  if (weatherOff > 0) parts.push(`${weatherOff} 格關天氣`);
+  const rest = 9 - Math.max(exprCustomised, weatherPinned, weatherOff);
+  slotStatusText.textContent = `🎨 自訂設定：${parts.join("、")}，其他格隨機`;
+}
 
 async function ensurePoolLoaded() {
   if (poolCache.loaded) return;
@@ -220,6 +247,7 @@ function buildSlotCell(index, slotValue) {
   // Weather select
   const weatherSelect = document.createElement("select");
   weatherSelect.className = "slot-select slot-weather";
+  weatherSelect.appendChild(new Option("🎲 天氣：隨機", "__random__"));
   weatherSelect.appendChild(new Option("☀ 天氣：無", "__none__"));
   poolCache.items
     .filter((p) => p.category === "weather")
@@ -241,9 +269,13 @@ function buildSlotCell(index, slotValue) {
   } else {
     exprSelect.value = "__random__";
   }
-  weatherSelect.value = Number.isInteger(v.weatherId)
-    ? `preset:${v.weatherId}`
-    : "__none__";
+  if (Number.isInteger(v.weatherId)) {
+    weatherSelect.value = `preset:${v.weatherId}`;
+  } else if (v.weatherNone) {
+    weatherSelect.value = "__none__";
+  } else {
+    weatherSelect.value = "__random__";
+  }
 
   exprSelect.addEventListener("change", () => {
     customInput.hidden = exprSelect.value !== "__custom__";
@@ -270,7 +302,10 @@ function readSlotConfigFromGrid() {
     }
     if (weatherSel.value.startsWith("preset:")) {
       entry.weatherId = parseInt(weatherSel.value.slice(7), 10);
+    } else if (weatherSel.value === "__none__") {
+      entry.weatherNone = true;
     }
+    // __random__ → no field (weather will roll naturally)
 
     cfg[idx] = Object.keys(entry).length === 0 ? null : entry;
   });
