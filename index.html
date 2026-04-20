@@ -19,6 +19,7 @@
       <button class="icon-btn" id="settings-btn" title="API 設定">⚙️</button>
     </div>
     <p class="hint">上傳一張清楚的自拍，AI 會自動產出 9 種誇張表情的 3×3 圖。或直接跳到下面「①」自己上傳現成的 3×3。</p>
+    <p class="hint coffee-hint">☕ 這個 AI 生成功能由作者付費呼叫 Gemini — 覺得好玩請 <a href="https://buymeacoffee.com/yazelin" target="_blank" rel="noopener">請我喝杯咖啡</a>！</p>
 
     <label class="upload-box compact" id="selfie-drop">
       <input type="file" id="selfie-input" accept="image/*" hidden />
@@ -30,7 +31,7 @@
       <button class="ghost" id="selfie-clear">換一張自拍</button>
     </div>
 
-    <button class="primary" id="ai-generate-btn" disabled>✨ 生成 3×3 表情圖</button>
+    <button class="primary" id="ai-generate-btn" disabled>✨ 生成 3×3 表情圖（約 50 秒）</button>
     <div id="ai-progress" hidden>
       <div class="bar"><div class="bar-fill" id="ai-bar-fill"></div></div>
       <span id="ai-progress-text">呼叫 Gemini…</span>
@@ -101,12 +102,19 @@
       <p class="hint">
         將下載的影片上傳到 Facebook 貼文即可。FB 會自動循環播放；觀眾點一下影片，就會停在一個隨機表情 🎲
       </p>
+      <a class="coffee-btn" href="https://buymeacoffee.com/yazelin" target="_blank" rel="noopener">
+        ☕ Buy me a coffee
+      </a>
     </div>
   </section>
 </main>
 
 <footer>
-  <p>Made with ❤ · <a href="https://github.com/yazelin/emoji-slot-machine" target="_blank" rel="noopener">GitHub</a></p>
+  <p>
+    Made with ❤ by <a href="https://github.com/yazelin" target="_blank" rel="noopener">yazelin</a>
+    · <a href="https://github.com/yazelin/emoji-slot-machine" target="_blank" rel="noopener">GitHub</a>
+    · <a href="https://buymeacoffee.com/yazelin" target="_blank" rel="noopener">☕ Buy me a coffee</a>
+  </p>
 </footer>
 
 <script type="module" src="app.js"></script>

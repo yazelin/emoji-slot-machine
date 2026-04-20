@@ -3,6 +3,8 @@
 const $ = (id) => document.getElementById(id);
 
 const API_URL_KEY = "slot-api-url";
+const DEFAULT_API_URL = "https://emoji-slot-gemini.yazelinj303.workers.dev";
+const ESTIMATED_GEN_SECONDS = 50;
 
 const state = {
   sourceImage: null,   // HTMLImageElement
@@ -79,22 +81,34 @@ async function handleSelfie(file) {
 
 aiGenerateBtn.addEventListener("click", async () => {
   if (!state.selfieFile) return;
-  let apiUrl = localStorage.getItem(API_URL_KEY);
-  if (!apiUrl) {
-    apiUrl = prompt(
-      "請輸入 Cloudflare Worker URL（例：https://emoji-slot-gemini.xxx.workers.dev）"
-    );
-    if (!apiUrl) return;
-    localStorage.setItem(API_URL_KEY, apiUrl.trim());
-  }
+  const apiUrl =
+    localStorage.getItem(API_URL_KEY) ||
+    DEFAULT_API_URL ||
+    prompt("請輸入 Worker URL");
+  if (!apiUrl) return;
 
   aiGenerateBtn.disabled = true;
   aiProgress.hidden = false;
-  setAiProgress(10, "縮圖中…");
+  setAiProgress(5, "🖼️ 縮圖中…");
 
+  let tick = null;
   try {
-    const { base64, mimeType } = await fileToResizedBase64(state.selfieFile, 1280);
-    setAiProgress(30, "呼叫 Gemini 生成中…（約 10–30 秒）");
+    const { base64, mimeType } = await fileToResizedBase64(
+      state.selfieFile,
+      1280
+    );
+
+    // Pseudo-progress: climb toward 85% over ESTIMATED_GEN_SECONDS.
+    const start = Date.now();
+    tick = setInterval(() => {
+      const elapsed = (Date.now() - start) / 1000;
+      const pct = Math.min(85, 15 + (elapsed / ESTIMATED_GEN_SECONDS) * 70);
+      const remain = Math.max(0, Math.ceil(ESTIMATED_GEN_SECONDS - elapsed));
+      const msg = remain > 0
+        ? `🎨 Gemini 作畫中… 已 ${Math.ceil(elapsed)}s，預估還有約 ${remain}s`
+        : `🎨 還在畫… 已 ${Math.ceil(elapsed)}s（偶爾會超過預估，再等一下）`;
+      setAiProgress(pct, msg);
+    }, 500);
 
     const resp = await fetch(apiUrl, {
       method: "POST",
@@ -102,18 +116,19 @@ aiGenerateBtn.addEventListener("click", async () => {
       body: JSON.stringify({ imageBase64: base64, mimeType }),
     });
 
+    clearInterval(tick);
+    tick = null;
+
     if (!resp.ok) {
       const detail = await resp.text();
       throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 300)}`);
     }
 
+    setAiProgress(90, "📦 載入結果…");
     const data = await resp.json();
-    setAiProgress(90, "載入結果…");
-
     const gridUrl = `data:${data.mimeType};base64,${data.data}`;
     const img = await loadImage(gridUrl);
 
-    // Feed the generated 3x3 into the existing pipeline.
     state.sourceImage = img;
     sourceImg.src = gridUrl;
     dropZone.hidden = true;
@@ -123,13 +138,13 @@ aiGenerateBtn.addEventListener("click", async () => {
     $("step-tiles").hidden = false;
     $("step-video").hidden = false;
 
-    setAiProgress(100, `✅ 生成完成，已拆好 9 張`);
-
+    setAiProgress(100, "✅ 生成完成，已拆好 9 張");
     $("step-upload").scrollIntoView({ behavior: "smooth" });
   } catch (err) {
     console.error(err);
     setAiProgress(0, `❌ 失敗：${err.message}`);
   } finally {
+    if (tick) clearInterval(tick);
     aiGenerateBtn.disabled = false;
   }
 });

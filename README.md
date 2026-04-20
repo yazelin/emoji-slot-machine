@@ -1,11 +1,17 @@
 # 🎰 Emoji Slot Machine
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-%E2%98%95-ffdd00?style=for-the-badge)](https://buymeacoffee.com/yazelin)
+
 A static web app that turns a 3×3 expression grid into a Facebook-friendly
 "slot machine" video. Viewers see the video auto-play in their feed; when they
 tap to pause, it lands on a random emoji — like a personality-test meme that
 works inside FB.
 
 **Live demo:** https://yazelin.github.io/emoji-slot-machine/
+
+> The AI-generation step (Step ⓪) calls Gemini via a Cloudflare Worker paid by
+> the author. If the tool was fun, [☕ buy me a coffee](https://buymeacoffee.com/yazelin) —
+> it keeps the API quota alive. 🙏
 
 ## Features
 
@@ -34,6 +40,11 @@ python3 -m http.server 8000
 - [ ] Step ①: upload a selfie → call Gemini API (user-supplied key) → get a
   3×3 expression grid automatically. Skipped for now because the Vertex AI
   endpoint's browser CORS behaviour needs verification.
+
+## Support
+
+If this project made you laugh, [buy me a coffee ☕](https://buymeacoffee.com/yazelin)
+or hit the **Sponsor ❤** button at the top of the repo.
 
 ## License
 

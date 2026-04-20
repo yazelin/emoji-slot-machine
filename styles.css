@@ -326,3 +326,35 @@ footer {
 }
 
 footer a { color: var(--accent); }
+
+.coffee-hint {
+  margin-top: 0.25rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px dashed rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  color: var(--text);
+}
+
+.coffee-hint a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+.coffee-hint a:hover { text-decoration: underline; }
+
+.coffee-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.65rem 1.1rem;
+  background: #ffdd00;
+  color: #111;
+  border-radius: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  align-self: flex-start;
+  transition: transform 0.1s;
+}
+.coffee-btn:hover { transform: translateY(-1px); }
