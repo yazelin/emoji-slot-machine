@@ -221,10 +221,16 @@
   <section class="card" id="step-video" hidden>
     <h2>③ 生成拉霸影片</h2>
     <div class="video-controls">
-      <label>FPS
-        <input type="number" id="fps-input" value="10" min="5" max="30" />
+      <label>版本
+        <select id="mode-input">
+          <option value="reel" selected>拉霸滾輪 3×3</option>
+          <option value="classic">經典 9 格閃爍</option>
+        </select>
       </label>
-      <label>循環次數
+      <label>FPS
+        <input type="number" id="fps-input" value="15" min="5" max="30" />
+      </label>
+      <label>強度
         <input type="number" id="repeats-input" value="7" min="1" max="20" />
       </label>
       <label>尺寸

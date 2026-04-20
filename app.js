@@ -544,17 +544,21 @@ generateBtn.addEventListener("click", async () => {
   setProgress(0, "初始化…");
 
   try {
+    const mode = $("mode-input")?.value || "reel";
     const fps = clamp(parseInt($("fps-input").value, 10), 5, 30);
     const repeats = clamp(parseInt($("repeats-input").value, 10), 1, 20);
     const size = parseInt($("size-input").value, 10);
 
-    const blob = await renderSlotVideo({ tiles: state.tiles, fps, repeats, size });
+    const blob = mode === "reel"
+      ? await renderReelSlotVideo({ tiles: state.tiles, fps, repeats, size })
+      : await renderSlotVideo({ tiles: state.tiles, fps, repeats, size });
     state.videoBlob = blob;
 
     const url = URL.createObjectURL(blob);
     previewVideo.src = url;
     downloadBtn.href = url;
-    downloadBtn.download = `slot-machine-${Date.now()}.webm`;
+    const prefix = mode === "reel" ? "slot-reel" : "slot-machine";
+    downloadBtn.download = `${prefix}-${Date.now()}.webm`;
 
     videoOutput.hidden = false;
     setProgress(100, `完成！檔案大小 ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
@@ -668,6 +672,339 @@ function shuffle(arr) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ---------- Reel-style 3x3 slot video ----------
+//
+// Design notes:
+// - All 3 reels share the same sequential strip: tiles[0..8].
+//   At integer position p, reel shows tiles[(p-1)%9], tiles[p], tiles[(p+1)%9]
+//   in top/mid/bot cells.
+// - Every frame snaps to an integer position — no fractional offsets —
+//   so pausing on any frame (FB auto-play click-to-pause) shows aligned tiles.
+// - 45 winning patterns precomputed below (5 line shapes × 9 emojis).
+//   Each spin picks one pattern at random; reels are scheduled to land
+//   at that pattern's stops. Every rendered video ends with a real line.
+// - Reels stop sequentially (left → mid → right) with a short deceleration
+//   tail (each of the last few tiles dwells for an extra frame or two).
+
+const REEL_N = 9;
+
+const WINNING_PATTERNS = (function precompute() {
+  const N = REEL_N;
+  const lineTypes = [
+    { id: "mid", name: "中橫線", kind: "row", rowIdx: 1,
+      stops: (E) => [E, E, E] },
+    { id: "top", name: "上橫線", kind: "row", rowIdx: 0,
+      stops: (E) => [(E + 1) % N, (E + 1) % N, (E + 1) % N] },
+    { id: "bot", name: "下橫線", kind: "row", rowIdx: 2,
+      stops: (E) => [(E + N - 1) % N, (E + N - 1) % N, (E + N - 1) % N] },
+    { id: "diag-down", name: "左斜線", kind: "diag", dir: "down",
+      stops: (E) => [(E + 1) % N, E, (E + N - 1) % N] },
+    { id: "diag-up", name: "右斜線", kind: "diag", dir: "up",
+      stops: (E) => [(E + N - 1) % N, E, (E + 1) % N] },
+  ];
+  const out = [];
+  for (const lt of lineTypes) {
+    for (let E = 0; E < N; E++) {
+      out.push({
+        emoji: E,
+        lineId: lt.id,
+        lineName: lt.name,
+        kind: lt.kind,
+        rowIdx: lt.rowIdx,
+        dir: lt.dir,
+        stops: lt.stops(E),
+      });
+    }
+  }
+  return out;
+})();
+
+// Build a reel's per-frame position sequence by walking forward: preroll at
+// `startPos`, then +1 tile per advance until landing on `targetPos` after
+// `baseCycles` full laps. Each advance dwells `stepFrames` frames, except the
+// last two (deceleration) which dwell longer. Guarantees no position jumps.
+function buildReelSpin({ preRollFrames, startPos, targetPos, stepFrames, baseCycles }) {
+  const N = REEL_N;
+  const seq = [];
+
+  for (let i = 0; i < preRollFrames; i++) seq.push(startPos);
+
+  const distance = (targetPos - startPos + N) % N; // 0..N-1 extra beyond full laps
+  const totalAdvances = baseCycles * N + distance; // at least baseCycles*N advances
+
+  const normalCount = Math.max(0, totalAdvances - 2);
+  for (let step = 1; step <= normalCount; step++) {
+    const pos = (startPos + step) % N;
+    for (let i = 0; i < stepFrames; i++) seq.push(pos);
+  }
+
+  // Deceleration tail (last 2 advances dwell longer — "click…… clunk")
+  if (totalAdvances >= 2) {
+    const tail1 = (startPos + totalAdvances - 1) % N;
+    for (let i = 0; i < stepFrames + 1; i++) seq.push(tail1);
+  }
+  if (totalAdvances >= 1) {
+    for (let i = 0; i < stepFrames + 2; i++) seq.push(targetPos);
+  }
+  return seq;
+}
+
+function roundedRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
+}
+
+function drawTileCover(ctx, img, x, y, w, h) {
+  const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const iw = img.naturalWidth * scale;
+  const ih = img.naturalHeight * scale;
+  const dx = x + (w - iw) / 2;
+  const dy = y + (h - ih) / 2;
+  ctx.drawImage(img, dx, dy, iw, ih);
+}
+
+function drawReelBackground(ctx, size) {
+  // Warm cream background matching the site palette.
+  ctx.fillStyle = "#faf6f2";
+  ctx.fillRect(0, 0, size, size);
+  const g = ctx.createRadialGradient(
+    size / 2, size / 2, size * 0.25,
+    size / 2, size / 2, size * 0.75
+  );
+  g.addColorStop(0, "rgba(232, 165, 152, 0.05)");
+  g.addColorStop(1, "rgba(61, 53, 48, 0.03)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+}
+
+function drawReelColumn(ctx, tiles, colX, gridY, cellSize, pos) {
+  const N = REEL_N;
+  const reelH = cellSize * 3;
+  const radius = cellSize * 0.06;
+
+  ctx.save();
+  roundedRectPath(ctx, colX, gridY, cellSize, reelH, radius);
+  ctx.clip();
+
+  // Inner reel bg (slightly lighter than canvas bg)
+  ctx.fillStyle = "#fffdf9";
+  ctx.fillRect(colX, gridY, cellSize, reelH);
+
+  // 3 visible cells: top = (pos-1)%N, mid = pos, bot = (pos+1)%N
+  const visible = [
+    { row: 0, idx: (pos + N - 1) % N },
+    { row: 1, idx: pos },
+    { row: 2, idx: (pos + 1) % N },
+  ];
+  for (const v of visible) {
+    const cellY = gridY + v.row * cellSize;
+    drawTileCover(ctx, tiles[v.idx], colX, cellY, cellSize, cellSize);
+  }
+
+  // Subtle horizontal dividers between cells
+  ctx.strokeStyle = "rgba(61, 53, 48, 0.06)";
+  ctx.lineWidth = 1;
+  for (let r = 1; r < 3; r++) {
+    const dy = gridY + r * cellSize;
+    ctx.beginPath();
+    ctx.moveTo(colX, dy);
+    ctx.lineTo(colX + cellSize, dy);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // Outer border
+  roundedRectPath(ctx, colX, gridY, cellSize, reelH, radius);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(61, 53, 48, 0.1)";
+  ctx.stroke();
+}
+
+function getWinningCells(pattern) {
+  // Returns [[col, row], ...] of 3 cells on the winning line.
+  if (pattern.kind === "row") {
+    const r = pattern.rowIdx;
+    return [[0, r], [1, r], [2, r]];
+  }
+  if (pattern.dir === "down") return [[0, 0], [1, 1], [2, 2]];
+  return [[0, 2], [1, 1], [2, 0]]; // diag-up
+}
+
+function drawPayline(ctx, pattern, layout, alpha) {
+  const { gridX, gridY, cellSize, gap } = layout;
+  const cx = (c) => gridX + c * (cellSize + gap) + cellSize / 2;
+  const cy = (r) => gridY + r * (cellSize + gap) + cellSize / 2;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = "#e8a598";
+  ctx.lineWidth = Math.max(4, cellSize * 0.02);
+  ctx.lineCap = "round";
+  ctx.shadowColor = "rgba(232, 165, 152, 0.6)";
+  ctx.shadowBlur = 14;
+
+  let x1, y1, x2, y2;
+  if (pattern.kind === "row") {
+    const r = pattern.rowIdx;
+    x1 = gridX - cellSize * 0.05;
+    x2 = gridX + 3 * cellSize + 2 * gap + cellSize * 0.05;
+    y1 = cy(r);
+    y2 = y1;
+  } else if (pattern.dir === "down") {
+    x1 = cx(0); y1 = cy(0);
+    x2 = cx(2); y2 = cy(2);
+  } else {
+    x1 = cx(0); y1 = cy(2);
+    x2 = cx(2); y2 = cy(0);
+  }
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawWinningGlow(ctx, pattern, layout, alpha) {
+  const { gridX, gridY, cellSize, gap } = layout;
+  const cells = getWinningCells(pattern);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = "#e8a598";
+  ctx.lineWidth = Math.max(3, cellSize * 0.012);
+  ctx.shadowColor = "rgba(232, 165, 152, 0.8)";
+  ctx.shadowBlur = 18;
+  for (const [c, r] of cells) {
+    const x = gridX + c * (cellSize + gap);
+    const y = gridY + r * (cellSize + gap);
+    roundedRectPath(ctx, x + 2, y + 2, cellSize - 4, cellSize - 4, cellSize * 0.05);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+async function renderReelSlotVideo({ tiles, fps, repeats, size }) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  drawReelBackground(ctx, size);
+
+  const stream = canvas.captureStream(0);
+  const track = stream.getVideoTracks()[0];
+  const canRequestFrame = typeof track.requestFrame === "function";
+
+  const mimeType = pickMimeType();
+  const recorder = new MediaRecorder(stream, {
+    mimeType: mimeType || undefined,
+    videoBitsPerSecond: 5_000_000,
+  });
+  const chunks = [];
+  recorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) chunks.push(e.data);
+  };
+  const stopped = new Promise((res) => (recorder.onstop = res));
+  recorder.start();
+
+  // Pick a winning pattern at random. Always has a real line.
+  const pattern = WINNING_PATTERNS[Math.floor(Math.random() * WINNING_PATTERNS.length)];
+
+  // Layout — 3×3 grid centered, small gutters between reels.
+  const outerPad = Math.round(size * 0.04);
+  const gap = Math.round(size * 0.012);
+  const innerW = size - outerPad * 2;
+  const cellSize = Math.floor((innerW - gap * 2) / 3);
+  const gridW = cellSize * 3 + gap * 2;
+  const gridX = Math.round((size - gridW) / 2);
+  const gridY = Math.round((size - gridW) / 2);
+  const layout = { gridX, gridY, cellSize, gap };
+
+  // Per-reel step rate — left fastest, right slowest. Targets ~100/150/200 ms
+  // per tile; converted to frame counts and forced strictly increasing so the
+  // visual differentiation survives at low fps too.
+  const targetMsPerTile = [100, 150, 200];
+  const stepFrames = targetMsPerTile.map(
+    (ms) => Math.max(1, Math.round((ms * fps) / 1000))
+  );
+  if (stepFrames[1] <= stepFrames[0]) stepFrames[1] = stepFrames[0] + 1;
+  if (stepFrames[2] <= stepFrames[1]) stepFrames[2] = stepFrames[1] + 1;
+
+  // Timing: each reel spins `baseCycles` full revolutions at its own step rate,
+  // then runs its deceleration tail. Slower reels end up taking longer, so the
+  // natural "left stops first → right stops last" stagger comes for free.
+  const preRollFrames = Math.max(1, Math.round(fps * 0.15));
+  const baseCycles = Math.max(1, Math.floor(repeats / 5));
+
+  // Stagger starting positions so frame 0 already shows 9 distinct tiles,
+  // not 3 identical columns. Reel r starts at tile index (r * 3) mod 9 → {0, 3, 6}.
+  const startPositions = [0, 3, 6];
+  const rawSpins = [0, 1, 2].map((r) =>
+    buildReelSpin({
+      preRollFrames,
+      startPos: startPositions[r],
+      targetPos: pattern.stops[r],
+      stepFrames: stepFrames[r],
+      baseCycles,
+    })
+  );
+  const spinFrames = Math.max(...rawSpins.map((s) => s.length));
+  const holdFrames = Math.max(Math.round(fps * 1.4), Math.round(spinFrames * 0.55));
+  const totalFrames = spinFrames + holdFrames;
+  // Pad each reel's sequence with its target so all schedules have the same length.
+  // Faster reels land earlier and hold on target the longest.
+  const schedules = rawSpins.map((seq, r) => {
+    const out = seq.slice();
+    while (out.length < totalFrames) out.push(pattern.stops[r]);
+    return out;
+  });
+  // Frame at which the slowest reel (index 2) first lands on its target.
+  // buildReelSpin's seq ends with (stepFrames + 2) frames at target, so we
+  // subtract that tail to find the landing frame.
+  const allStoppedFrame = rawSpins[2].length - (stepFrames[2] + 2);
+
+  const frameMs = 1000 / fps;
+  for (let f = 0; f < totalFrames; f++) {
+    drawReelBackground(ctx, size);
+
+    for (let r = 0; r < 3; r++) {
+      const colX = gridX + r * (cellSize + gap);
+      drawReelColumn(ctx, tiles, colX, gridY, cellSize, schedules[r][f]);
+    }
+
+    // Payline / glow: fade in once all reels have stopped, then pulse.
+    if (f >= allStoppedFrame) {
+      const heldFrames = f - allStoppedFrame;
+      const heldSec = heldFrames / fps;
+      const fadeIn = Math.min(1, heldSec / 0.25);
+      const pulse = 0.65 + 0.35 * Math.sin(heldSec * Math.PI * 2.2);
+      drawPayline(ctx, pattern, layout, fadeIn * 0.95);
+      drawWinningGlow(ctx, pattern, layout, fadeIn * pulse);
+    }
+
+    if (canRequestFrame) track.requestFrame();
+    setProgress(
+      Math.round((f / totalFrames) * 95),
+      `渲染中 ${f + 1}/${totalFrames}（${pattern.lineName}・第 ${pattern.emoji + 1} 號表情）`
+    );
+    await sleep(frameMs);
+  }
+
+  await sleep(frameMs);
+  recorder.stop();
+  await stopped;
+  return new Blob(chunks, { type: mimeType || "video/webm" });
 }
 
 // ---------- Share ----------
