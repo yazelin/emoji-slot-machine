@@ -452,6 +452,25 @@ button, .primary, .ghost {
 }
 .coffee-hint a:hover { border-bottom-style: solid; }
 
+.rpm-hint {
+  margin-top: 0.4rem;
+  padding: 0.65rem 0.85rem;
+  background: #fff7e8;
+  border: 1px dashed #e4bf7a;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+.rpm-hint strong { color: #a3731b; }
+.rpm-hint a {
+  color: #a3731b;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dotted #d4a24a;
+}
+.rpm-hint a:hover { border-bottom-style: solid; }
+
 .tip-box {
   background: var(--sage-soft);
   border-radius: var(--radius-sm);
