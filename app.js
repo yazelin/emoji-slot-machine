@@ -918,9 +918,6 @@ async function renderReelSlotVideo({ tiles, fps, repeats, size }) {
   const stopped = new Promise((res) => (recorder.onstop = res));
   recorder.start();
 
-  // Pick a winning pattern at random. Always has a real line.
-  const pattern = WINNING_PATTERNS[Math.floor(Math.random() * WINNING_PATTERNS.length)];
-
   // Layout — 3×3 grid centered, small gutters between reels.
   const outerPad = Math.round(size * 0.04);
   const gap = Math.round(size * 0.012);
@@ -941,38 +938,69 @@ async function renderReelSlotVideo({ tiles, fps, repeats, size }) {
   if (stepFrames[1] <= stepFrames[0]) stepFrames[1] = stepFrames[0] + 1;
   if (stepFrames[2] <= stepFrames[1]) stepFrames[2] = stepFrames[1] + 1;
 
-  // Timing: each reel spins `baseCycles` full revolutions at its own step rate,
-  // then runs its deceleration tail. Slower reels end up taking longer, so the
-  // natural "left stops first → right stops last" stagger comes for free.
+  // Multi-round design: the video contains `roundCount` independent spin-and-
+  // flash cycles, each landing on a DIFFERENT winning pattern picked out of the
+  // 45 precomputed ones. Between rounds the reels immediately start spinning
+  // again — no long hold — so observers who click-to-pause on FB mostly catch
+  // the reels mid-motion, while still having a real chance of landing on a
+  // visible line. Every round is guaranteed to have a line (the short flash),
+  // so "at minimum one line exists" is satisfied by design.
   const preRollFrames = Math.max(1, Math.round(fps * 0.15));
-  const baseCycles = Math.max(1, Math.floor(repeats / 5));
+  const roundCycles = 1; // each reel does 1 full revolution per round
+  const roundCount = Math.max(2, Math.min(4, Math.floor(repeats / 3)));
+  const shuffledPatterns = [...WINNING_PATTERNS].sort(() => Math.random() - 0.5);
+  const patterns = shuffledPatterns.slice(0, roundCount);
 
-  // Stagger starting positions so frame 0 already shows 9 distinct tiles,
-  // not 3 identical columns. Reel r starts at tile index (r * 3) mod 9 → {0, 3, 6}.
-  const startPositions = [0, 3, 6];
-  const rawSpins = [0, 1, 2].map((r) =>
-    buildReelSpin({
-      preRollFrames,
-      startPos: startPositions[r],
-      targetPos: pattern.stops[r],
-      stepFrames: stepFrames[r],
-      baseCycles,
-    })
-  );
-  const spinFrames = Math.max(...rawSpins.map((s) => s.length));
-  const holdFrames = Math.max(Math.round(fps * 1.4), Math.round(spinFrames * 0.55));
-  const totalFrames = spinFrames + holdFrames;
-  // Pad each reel's sequence with its target so all schedules have the same length.
-  // Faster reels land earlier and hold on target the longest.
-  const schedules = rawSpins.map((seq, r) => {
-    const out = seq.slice();
-    while (out.length < totalFrames) out.push(pattern.stops[r]);
-    return out;
-  });
-  // Frame at which the slowest reel (index 2) first lands on its target.
-  // buildReelSpin's seq ends with (stepFrames + 2) frames at target, so we
-  // subtract that tail to find the landing frame.
-  const allStoppedFrame = rawSpins[2].length - (stepFrames[2] + 2);
+  // Flash = frames at which all 3 reels are simultaneously on target.
+  // Non-last rounds flash briefly (~2 frames); final round holds a bit longer
+  // so the video has a natural pause before looping back to frame 0.
+  const flashFramesNonLast = 2;
+  const flashFramesLast = Math.max(6, Math.round(fps * 0.5));
+
+  const schedules = [[], [], []];
+  const flashRanges = []; // [{ start, end, pattern }]
+  let currentStart = [0, 3, 6]; // staggered frame-0 positions so 9 distinct tiles visible
+
+  for (let round = 0; round < roundCount; round++) {
+    const isLast = round === roundCount - 1;
+    const roundPreRoll = round === 0 ? preRollFrames : 0;
+    const padFlashFrames = isLast ? flashFramesLast : flashFramesNonLast;
+
+    const roundSpins = [0, 1, 2].map((r) =>
+      buildReelSpin({
+        preRollFrames: roundPreRoll,
+        startPos: currentStart[r],
+        targetPos: patterns[round].stops[r],
+        stepFrames: stepFrames[r],
+        baseCycles: roundCycles,
+      })
+    );
+    const maxSpinLen = Math.max(...roundSpins.map((s) => s.length));
+
+    // Slowest reel (index 2) dominates round length. Its seq naturally ends
+    // with (stepFrames[2] + 2) frames at target — that's the earliest frame at
+    // which ALL three reels are on target simultaneously.
+    const reel2LandOffset = roundSpins[2].length - (stepFrames[2] + 2);
+    const roundBase = schedules[0].length;
+    const fullLineStart = roundBase + reel2LandOffset;
+
+    for (let r = 0; r < 3; r++) {
+      const seq = roundSpins[r];
+      const target = patterns[round].stops[r];
+      while (seq.length < maxSpinLen) seq.push(target);
+      for (let i = 0; i < padFlashFrames; i++) seq.push(target);
+      schedules[r].push(...seq);
+    }
+
+    flashRanges.push({
+      start: fullLineStart,
+      end: schedules[0].length,
+      pattern: patterns[round],
+    });
+    currentStart = [0, 1, 2].map((r) => patterns[round].stops[r]);
+  }
+
+  const totalFrames = schedules[0].length;
 
   const frameMs = 1000 / fps;
   for (let f = 0; f < totalFrames; f++) {
@@ -983,20 +1011,23 @@ async function renderReelSlotVideo({ tiles, fps, repeats, size }) {
       drawReelColumn(ctx, tiles, colX, gridY, cellSize, schedules[r][f]);
     }
 
-    // Payline / glow: fade in once all reels have stopped, then pulse.
-    if (f >= allStoppedFrame) {
-      const heldFrames = f - allStoppedFrame;
+    // Draw payline + glow only while we're inside a "full line visible"
+    // window — the brief flash per round. Fades in fast so the 2-frame flashes
+    // are still visible; pulses at a high rate so even 1-frame pauses show life.
+    const flash = flashRanges.find((fr) => f >= fr.start && f < fr.end);
+    if (flash) {
+      const heldFrames = f - flash.start;
       const heldSec = heldFrames / fps;
-      const fadeIn = Math.min(1, heldSec / 0.25);
-      const pulse = 0.65 + 0.35 * Math.sin(heldSec * Math.PI * 2.2);
-      drawPayline(ctx, pattern, layout, fadeIn * 0.95);
-      drawWinningGlow(ctx, pattern, layout, fadeIn * pulse);
+      const fadeIn = Math.min(1, heldSec / 0.1 + 0.3);
+      const pulse = 0.7 + 0.3 * Math.sin(heldSec * Math.PI * 4);
+      drawPayline(ctx, flash.pattern, layout, fadeIn * 0.95);
+      drawWinningGlow(ctx, flash.pattern, layout, fadeIn * pulse);
     }
 
     if (canRequestFrame) track.requestFrame();
     setProgress(
       Math.round((f / totalFrames) * 95),
-      `渲染中 ${f + 1}/${totalFrames}（${pattern.lineName}・第 ${pattern.emoji + 1} 號表情）`
+      `渲染中 ${f + 1}/${totalFrames}（${roundCount} 輪連線）`
     );
     await sleep(frameMs);
   }
