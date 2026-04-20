@@ -142,21 +142,31 @@ function buildPrompt(slots) {
     .map((line) => "• " + line.toLowerCase())
     .join("\n");
 
-  return `Create a single 3×3 grid photograph: 3 rows × 3 columns of 9 equal-size square portraits of the same person from the reference photo. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
+  return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square portraits of the same subject from the reference image. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
+
+CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is, keep it:
+• If reference is a photograph → output photo-realistic portraits.
+• If reference is anime / manga → output anime illustrations in the same line-art and shading.
+• If reference is a cartoon / chibi → stay cartoon, same linework and palette.
+• If reference is 3D-rendered / CGI → stay 3D-rendered.
+• If reference is a painting / sketch / watercolor → match that medium.
+• If reference is a statue / deity / sculpture → keep sculptural look.
+Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
 Reading left-to-right, top-to-bottom, the nine tiles are:
 
 ${bullets}
 
-A bullet written as "<state> + <weather>" means the tile shows both at once — e.g. "ecstatic laughter + drenched in rain" = the person laughing hysterically while being poured on. Render both layers in the same tile.
+A bullet written as "<state> + <weather>" means the tile shows both at once — e.g. "ecstatic laughter + drenched in rain" = the subject laughing while being poured on. Both states are rendered in the reference's own style (cartoon rain for a cartoon, photoreal rain for a photo, etc.).
 
-Identity stays constant across every tile: same face, skin tone, hair colour, base hairstyle, clothing, and background as the reference. Weather bullets (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin (wet, flushed, frosted) — that is expected. The PERSON must still be clearly the same individual.
+Identity stays constant across every tile: same face/features, colours, hairstyle, clothing, and background treatment as the reference. Weather bullets (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin/surface (wet, flushed, frosted, cracked) — that is expected. The SUBJECT must still be clearly the same character.
 
 OUTPUT RULES — strictly enforced:
-- Pure photography only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, or arrows anywhere on the image.
+- Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, or arrows anywhere on the image.
 - Do NOT write the expression names on the tiles. The bullets above are instructions for you, not text to paint.
 - No borders, gutters, or dividers between tiles — it is one seamless 1:1 image.
-- Two tiles with the same mouth shape or same eye state are NOT allowed.`;
+- Two tiles with the same mouth shape or same eye state are NOT allowed.
+- The art style MUST match the reference.`;
 }
 
 function corsHeaders(origin) {
