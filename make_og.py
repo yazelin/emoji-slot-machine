@@ -65,25 +65,27 @@ def main() -> None:
     sub_font = ImageFont.truetype(FONT_REG, 26)
     cta_font = ImageFont.truetype(FONT_BOLD, 24)
 
-    # "kimochi slot" accent
-    d.text((text_x, 165), "kimochi slot", fill=ACCENT, font=ja_font)
+    # Sakura + "kimochi slot" accent on one baseline
+    sakura_font = ImageFont.truetype(FONT_BOLD, 32)
+    d.text((text_x, 168), "✿", fill=ACCENT, font=sakura_font)
+    d.text((text_x + 44, 175), "kimochi slot", fill=ACCENT, font=ja_font)
     # Title
-    d.text((text_x, 205), "表情拉霸機", fill=TEXT, font=title_font)
+    d.text((text_x, 215), "表情拉霸機", fill=TEXT, font=title_font)
     # Tagline (two lines)
     d.text(
-        (text_x, 310),
+        (text_x, 320),
         "把 3×3 表情圖做成",
         fill=MUTED,
         font=sub_font,
     )
     d.text(
-        (text_x, 345),
+        (text_x, 355),
         "可分享的 FB 拉霸影片",
         fill=MUTED,
         font=sub_font,
     )
     # CTA pill
-    pill_y = 415
+    pill_y = 425
     pill_h = 54
     pill_w = 340
     d.rounded_rectangle(
@@ -97,10 +99,6 @@ def main() -> None:
         fill=(255, 255, 255),
         font=cta_font,
     )
-
-    # Sakura accent
-    sakura_font = ImageFont.truetype(FONT_BOLD, 48)
-    d.text((text_x - 40, 155), "✿", fill=(232, 165, 152, 180), font=sakura_font)
 
     canvas = canvas.convert("RGB")
     out_path = ROOT / "og.png"
