@@ -3,8 +3,47 @@
 const $ = (id) => document.getElementById(id);
 
 const API_URL_KEY = "slot-api-url";
+const SLOT_CONFIG_KEY = "slot-machine-slots";
 const DEFAULT_API_URL = "https://emoji-slot-gemini.yazelinj303.workers.dev";
 const ESTIMATED_GEN_SECONDS = 50;
+
+// Chinese short labels parallel to Worker's EXPRESSION_POOL by index (0..44).
+// Kept in sync manually with worker/src/index.js.
+const EXPRESSION_LABELS_ZH = [
+  "放聲大笑", "笑到流淚", "嚎啕大哭", "含淚悲傷", "暴怒", "激動大吼",
+  "嘟嘴生氣", "驚嚇震驚", "下巴掉下來", "略感驚訝", "仰慕注目", "噁心厭惡",
+  "尷尬退縮", "心虛尷尬", "困惑不解", "嘟嘴懷疑", "壞笑", "神秘微笑",
+  "俏皮眨眼", "吐舌扮鬼臉", "傻笑", "飛吻", "愛心眼", "撒嬌斜眼",
+  "害羞臉紅", "自豪微笑", "放空發呆", "面無表情", "翻白眼", "睡眠打哈欠",
+  "得意", "專心", "堅定", "鼓腮幫子", "緊張吞口水", "無聲尖叫",
+  "被電到", "被雷打到", "被強風吹", "淋雨", "在雪中", "冷到發抖",
+  "熱到冒汗", "被日光刺眼", "寒顫",
+];
+
+// Pool manifest cache (fetched from Worker on first settings open).
+const poolCache = { loaded: false, items: [] };
+
+// Per-slot configuration: length-9 array. Each entry is:
+//   null          → random (Worker picks)
+//   { id: 3 }     → preset pool entry by id
+//   { custom: s } → free text
+function loadSlotConfig() {
+  try {
+    const raw = localStorage.getItem(SLOT_CONFIG_KEY);
+    if (!raw) return new Array(9).fill(null);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length !== 9) return new Array(9).fill(null);
+    return parsed;
+  } catch {
+    return new Array(9).fill(null);
+  }
+}
+
+function saveSlotConfig(cfg) {
+  const allRandom = cfg.every((s) => s === null);
+  if (allRandom) localStorage.removeItem(SLOT_CONFIG_KEY);
+  else localStorage.setItem(SLOT_CONFIG_KEY, JSON.stringify(cfg));
+}
 
 const state = {
   sourceImage: null,   // HTMLImageElement
@@ -27,8 +66,9 @@ const aiProgressText = $("ai-progress-text");
 
 const settingsBtn = $("settings-btn");
 const settingsDialog = $("settings-dialog");
-const apiUrlInput = $("api-url-input");
-const apiSaveBtn = $("api-save");
+const slotGrid = $("slot-grid");
+const slotsResetBtn = $("slots-reset");
+const openSettingsLink = $("open-settings-link");
 
 // NOTE: do NOT call selfieInput.click() here — the <label> wrapper already
 // opens the picker natively, so adding an extra .click() shows it twice.
@@ -58,15 +98,174 @@ selfieClear.addEventListener("click", () => {
   aiGenerateBtn.disabled = true;
 });
 
-settingsBtn.addEventListener("click", () => {
-  apiUrlInput.value = localStorage.getItem(API_URL_KEY) || "";
+settingsBtn.addEventListener("click", openSettings);
+if (openSettingsLink) openSettingsLink.addEventListener("click", openSettings);
+
+async function openSettings() {
+  await ensurePoolLoaded();
+  renderSlotGrid(loadSlotConfig());
   settingsDialog.showModal();
+}
+
+slotsResetBtn.addEventListener("click", () => {
+  renderSlotGrid(new Array(9).fill(null));
 });
-apiSaveBtn.addEventListener("click", (e) => {
-  const v = apiUrlInput.value.trim();
-  if (v) localStorage.setItem(API_URL_KEY, v);
-  else localStorage.removeItem(API_URL_KEY);
+
+const slotsCopyBtn = $("slots-copy-prompt");
+const slotsCopyStatus = $("slots-copy-status");
+if (slotsCopyBtn) {
+  slotsCopyBtn.addEventListener("click", async () => {
+    const cfg = readSlotConfigFromGrid();
+    slotsCopyStatus.hidden = false;
+    slotsCopyStatus.textContent = "正在組 prompt…";
+    try {
+      const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+      const resp = await fetch(apiUrl.replace(/\/$/, "") + "/prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slots: cfg }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const { prompt } = await resp.json();
+      await navigator.clipboard.writeText(prompt);
+      slotsCopyStatus.textContent =
+        "✓ 已複製完整 prompt！到 Gemini / ChatGPT 貼上 + 附自拍，就能生成你這組自訂的 3×3";
+    } catch (err) {
+      console.error(err);
+      slotsCopyStatus.textContent = `複製失敗：${err.message}`;
+    }
+    setTimeout(() => { slotsCopyStatus.hidden = true; }, 6000);
+  });
+}
+
+settingsDialog.addEventListener("close", () => {
+  if (settingsDialog.returnValue === "save") {
+    saveSlotConfig(readSlotConfigFromGrid());
+  }
 });
+
+async function ensurePoolLoaded() {
+  if (poolCache.loaded) return;
+  try {
+    const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/pool");
+    if (!resp.ok) throw new Error(`pool ${resp.status}`);
+    const data = await resp.json();
+    poolCache.items = data.pool || [];
+    poolCache.loaded = true;
+  } catch (err) {
+    console.warn("failed to fetch pool, using built-in labels only", err);
+    // Fallback: construct from local labels.
+    poolCache.items = EXPRESSION_LABELS_ZH.map((_, id) => ({
+      id,
+      category: id < 36 ? "emotion" : "weather",
+      label: `#${id}`,
+    }));
+    poolCache.loaded = true;
+  }
+}
+
+function renderSlotGrid(cfg) {
+  slotGrid.innerHTML = "";
+  for (let i = 0; i < 9; i++) {
+    slotGrid.appendChild(buildSlotCell(i, cfg[i]));
+  }
+}
+
+// Slot data model (persisted per-slot):
+//   null          → completely random (expression random, no weather)
+//   {} or {exprId|exprCustom|weatherId} → any combination
+// Worker will fill the blanks randomly from the right sub-pool.
+function buildSlotCell(index, slotValue) {
+  const cell = document.createElement("div");
+  cell.className = "slot-cell";
+  cell.dataset.idx = String(index);
+
+  const head = document.createElement("div");
+  head.className = "slot-head";
+  head.textContent = `第 ${index + 1} 格`;
+  cell.appendChild(head);
+
+  // Expression select
+  const exprSelect = document.createElement("select");
+  exprSelect.className = "slot-select slot-expr";
+  exprSelect.appendChild(new Option("🎲 表情：隨機", "__random__"));
+  poolCache.items
+    .filter((p) => p.category === "emotion")
+    .forEach((p) =>
+      exprSelect.appendChild(
+        new Option(EXPRESSION_LABELS_ZH[p.id] || p.label, `preset:${p.id}`)
+      )
+    );
+  exprSelect.appendChild(new Option("✏️ 自訂表情…", "__custom__"));
+  cell.appendChild(exprSelect);
+
+  const customInput = document.createElement("input");
+  customInput.type = "text";
+  customInput.className = "slot-custom";
+  customInput.placeholder = "自己描述，例如：看到帥哥兩眼發亮";
+  customInput.hidden = true;
+  cell.appendChild(customInput);
+
+  // Weather select
+  const weatherSelect = document.createElement("select");
+  weatherSelect.className = "slot-select slot-weather";
+  weatherSelect.appendChild(new Option("☀ 天氣：無", "__none__"));
+  poolCache.items
+    .filter((p) => p.category === "weather")
+    .forEach((p) =>
+      weatherSelect.appendChild(
+        new Option(EXPRESSION_LABELS_ZH[p.id] || p.label, `preset:${p.id}`)
+      )
+    );
+  cell.appendChild(weatherSelect);
+
+  // Pre-fill from existing config
+  const v = slotValue || {};
+  if (typeof v.exprCustom === "string" && v.exprCustom) {
+    exprSelect.value = "__custom__";
+    customInput.value = v.exprCustom;
+    customInput.hidden = false;
+  } else if (Number.isInteger(v.exprId)) {
+    exprSelect.value = `preset:${v.exprId}`;
+  } else {
+    exprSelect.value = "__random__";
+  }
+  weatherSelect.value = Number.isInteger(v.weatherId)
+    ? `preset:${v.weatherId}`
+    : "__none__";
+
+  exprSelect.addEventListener("change", () => {
+    customInput.hidden = exprSelect.value !== "__custom__";
+    if (!customInput.hidden) customInput.focus();
+  });
+
+  return cell;
+}
+
+function readSlotConfigFromGrid() {
+  const cfg = new Array(9).fill(null);
+  slotGrid.querySelectorAll(".slot-cell").forEach((cell) => {
+    const idx = parseInt(cell.dataset.idx, 10);
+    const exprSel = cell.querySelector(".slot-expr");
+    const weatherSel = cell.querySelector(".slot-weather");
+    const custom = cell.querySelector(".slot-custom");
+
+    const entry = {};
+    if (exprSel.value === "__custom__") {
+      const t = custom.value.trim();
+      if (t) entry.exprCustom = t;
+    } else if (exprSel.value.startsWith("preset:")) {
+      entry.exprId = parseInt(exprSel.value.slice(7), 10);
+    }
+    if (weatherSel.value.startsWith("preset:")) {
+      entry.weatherId = parseInt(weatherSel.value.slice(7), 10);
+    }
+
+    cfg[idx] = Object.keys(entry).length === 0 ? null : entry;
+  });
+  return cfg;
+}
 
 async function handleSelfie(file) {
   if (!file || !file.type.startsWith("image/")) {
@@ -111,10 +310,11 @@ aiGenerateBtn.addEventListener("click", async () => {
       setAiProgress(pct, msg);
     }, 500);
 
+    const slotConfig = loadSlotConfig();
     const resp = await fetch(apiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imageBase64: base64, mimeType }),
+      body: JSON.stringify({ imageBase64: base64, mimeType, slots: slotConfig }),
     });
 
     clearInterval(tick);
@@ -426,6 +626,34 @@ function sleep(ms) {
 }
 
 // ---------- Share ----------
+
+// ---------- Copy prompt ----------
+
+const copyPromptBtn = $("copy-prompt-btn");
+if (copyPromptBtn) {
+  copyPromptBtn.addEventListener("click", async () => {
+    const pre = $("copy-prompt-text");
+    const label = copyPromptBtn.querySelector(".copy-label");
+    const originalLabel = label.textContent;
+    try {
+      await navigator.clipboard.writeText(pre.textContent.trim());
+      label.textContent = "已複製！貼到 Gemini 就好";
+      copyPromptBtn.classList.add("copied");
+    } catch {
+      // Fallback: manual selection
+      const range = document.createRange();
+      range.selectNodeContents(pre);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      label.textContent = "請手動 Ctrl+C 複製";
+    }
+    setTimeout(() => {
+      label.textContent = originalLabel;
+      copyPromptBtn.classList.remove("copied");
+    }, 2500);
+  });
+}
 
 shareBtn.addEventListener("click", async () => {
   if (!state.videoBlob) return;

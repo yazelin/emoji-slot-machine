@@ -461,10 +461,39 @@ button, .primary, .ghost {
   line-height: 1.7;
   color: var(--text);
 }
+
+.tip-box summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.1rem 0;
+  color: #5f7857;
+  font-weight: 500;
+}
+.tip-box summary::-webkit-details-marker { display: none; }
+.tip-box summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 6px;
+  transition: transform 0.2s ease;
+  color: var(--sage);
+}
+.tip-box[open] summary::before { transform: rotate(90deg); }
+
 .tip-box strong {
   color: #6a8760;
   margin-right: 2px;
 }
+
+.tip-body {
+  margin-top: 0.6rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed rgba(168, 192, 159, 0.5);
+}
+.tip-body p {
+  margin: 0 0 0.6rem;
+  color: var(--text);
+}
+
 .tip-box a {
   color: #6a8760;
   font-weight: 500;
@@ -472,6 +501,60 @@ button, .primary, .ghost {
   border-bottom: 1px dotted var(--sage);
 }
 .tip-box a:hover { border-bottom-style: solid; }
+
+.prompt-box {
+  position: relative;
+  background: #fffdf9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.85rem 0.85rem;
+  margin-top: 0.4rem;
+}
+
+#copy-prompt-text {
+  margin: 0;
+  padding-right: 0;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.copy-btn {
+  position: sticky;
+  top: 0.1rem;
+  float: right;
+  margin-left: 0.5rem;
+  margin-bottom: 0.25rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--card);
+  color: #5f7857;
+  border: 1px solid var(--sage);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.copy-btn:hover {
+  background: var(--sage-soft);
+}
+.copy-btn.copied {
+  background: var(--sage);
+  color: #fff;
+  border-color: var(--sage);
+}
+.copy-btn .btn-icon {
+  width: 14px;
+  height: 14px;
+}
 
 #video-output {
   margin-top: 1rem;
@@ -519,8 +602,8 @@ dialog {
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 1.75rem;
-  max-width: 500px;
+  padding: 1.5rem;
+  max-width: 640px;
   width: calc(100% - 2rem);
   box-shadow: var(--shadow-lg);
 }
@@ -529,12 +612,90 @@ dialog h3 { margin-top: 0; font-weight: 600; }
 
 dialog menu {
   display: flex;
-  gap: 0.5rem;
+  gap: 0.4rem;
   justify-content: flex-end;
   margin: 1rem 0 0;
   padding: 0;
+  flex-wrap: wrap;
 }
-dialog menu button { padding: 0.55rem 1.1rem; }
+dialog menu button {
+  padding: 0.55rem 0.95rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 1rem 0 0.25rem;
+}
+
+.slot-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0.5rem;
+  background: #fbf7f2;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.slot-head {
+  font-size: 0.7rem;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.slot-select {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 0.72rem;
+  color: var(--text);
+  font-family: inherit;
+  width: 100%;
+  cursor: pointer;
+}
+
+.slot-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.slot-custom {
+  background: #ffffff;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 0.72rem;
+  color: var(--text);
+  font-family: inherit;
+  width: 100%;
+}
+
+@media (max-width: 560px) {
+  .slot-grid { gap: 6px; }
+  .slot-cell { padding: 0.4rem; }
+  .slot-select { font-size: 0.68rem; }
+}
+
+.link-btn {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--accent-hover);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent);
+}
+.link-btn:hover { border-bottom-style: solid; }
 
 footer {
   text-align: center;

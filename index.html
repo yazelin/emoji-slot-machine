@@ -83,7 +83,9 @@
         <svg class="btn-icon"><use href="#i-gear"/></svg>
       </button>
     </div>
-    <p class="hint">上傳一張清楚的自拍，AI 會自動產出 9 種誇張表情的 3×3 圖。</p>
+    <p class="hint">上傳一張清楚的自拍，AI 會自動產出 9 種誇張表情的 3×3 圖。
+      <button type="button" class="link-btn" id="open-settings-link">點這裡自訂 9 格表情</button>（或隨機）。
+    </p>
     <p class="hint coffee-hint">
       <svg class="inline-icon"><use href="#i-coffee"/></svg>
       這個 AI 功能由作者付費呼叫 Gemini — 覺得好玩請
@@ -115,15 +117,18 @@
 
   <dialog id="settings-dialog">
     <form method="dialog">
-      <h3>API 設定</h3>
-      <label class="field">
-        Worker URL
-        <input type="url" id="api-url-input" placeholder="https://emoji-slot-gemini.xxx.workers.dev" />
-      </label>
-      <p class="hint">部署完 Cloudflare Worker 後把網址貼進來。存在瀏覽器本機，不會上傳。</p>
+      <h3>自訂 9 格表情</h3>
+      <p class="hint">每一格可從 45 種預設裡挑，或選「自訂」自己打一句描述。留「隨機」就讓 AI 幫你抽。</p>
+      <div class="slot-grid" id="slot-grid"></div>
+      <p class="hint" id="slots-copy-status" hidden></p>
       <menu>
-        <button value="cancel">取消</button>
-        <button value="save" id="api-save" class="primary">儲存</button>
+        <button value="cancel" class="ghost">取消</button>
+        <button type="button" class="ghost" id="slots-reset">全部重設</button>
+        <button type="button" class="ghost" id="slots-copy-prompt">
+          <svg class="btn-icon"><use href="#i-check"/></svg>
+          複製到 Gemini
+        </button>
+        <button value="save" class="primary" id="slots-save">儲存</button>
       </menu>
     </form>
   </dialog>
@@ -131,13 +136,35 @@
   <section class="card" id="step-upload">
     <h2>① 3×3 九宮格圖</h2>
     <p class="hint">上面 AI 產生的會自動填入這裡，或直接上傳自己的 3×3 圖。</p>
-    <p class="hint tip-box">
-      💡 <strong>省錢小撇步</strong>：可以自己到
-      <a href="https://gemini.google.com" target="_blank" rel="noopener">Gemini</a>、
-      <a href="https://labs.google/flow" target="_blank" rel="noopener">Google Flow</a>、
-      Midjourney、ChatGPT 等工具產生 3×3 表情圖，再上傳到這裡拆圖 + 做影片，
-      就完全不會用到作者的 API 額度。
-    </p>
+    <details class="tip-box">
+      <summary><strong>省錢小撇步</strong>：用自己的 AI 工具產圖（點開看做法）</summary>
+      <div class="tip-body">
+        <p>到 <a href="https://gemini.google.com" target="_blank" rel="noopener">Gemini</a>、<a href="https://labs.google/flow" target="_blank" rel="noopener">Google Flow</a> 或 <a href="https://chatgpt.com" target="_blank" rel="noopener">ChatGPT</a> 等工具，附上自拍照、貼下面這段 prompt，就能拿到一張 3×3 圖，再回這裡上傳就好。</p>
+        <div class="prompt-box">
+          <button type="button" class="copy-btn" id="copy-prompt-btn">
+            <svg class="btn-icon"><use href="#i-check"/></svg>
+            <span class="copy-label">複製 prompt</span>
+          </button>
+          <pre id="copy-prompt-text">請依據我上傳的這張自拍，產出一張「3×3 九宮格圖」（3 列 × 3 欄，共 9 個正方形小格）。每一格都是同一個人的肖像，但表情完全不同、越誇張越好，像是在演舞台劇。
+
+9 種表情（任選或自己發揮）：
+1. 放聲大笑（頭微仰、眼睛瞇起、嘴大張露齒）
+2. 嚎啕大哭（閉眼、淚水流下、嘴開成方形）
+3. 暴怒（咬牙切齒、眉毛下壓、鼻孔張開）
+4. 驚嚇（眼睛瞪大、嘴巴張成圓形 O）
+5. 噁心（鼻子皺起、舌頭伸出「yuck」）
+6. 困惑（一邊眉毛挑高、眼睛斜看、嘴撇一邊）
+7. 壞笑（嘴角單邊上揚、眼神斜睨、算計感）
+8. 飛吻（嘴唇嘟起、眼神夢幻半閉）
+9. 放空（眼神渙散、嘴微張、零情緒）
+
+硬性要求：
+- 9 格中臉、髮型、衣服、燈光、背景都要一致（誇張的只能是表情）。
+- 輸出是「一張完整的 1:1 正方形九宮格圖」，格子之間沒有邊框、沒有文字、沒有數字。
+- 表情要誇張戲劇化，不要含蓄，小圖也能一眼分辨。</pre>
+        </div>
+      </div>
+    </details>
     <label class="upload-box" id="drop-zone">
       <input type="file" id="file-input" accept="image/*" hidden />
       <svg class="upload-icon"><use href="#i-upload"/></svg>

@@ -68,12 +68,70 @@ function shuffle(arr) {
   return a;
 }
 
-function buildPrompt() {
-  const picks = shuffle(EXPRESSION_POOL).slice(0, 9);
-  const numbered = picks.map((line, i) => `${i + 1}. ${line}`).join("\n");
+// IDs 0..35 = emotions, 36..44 = weather/environment.
+const EMOTION_COUNT = 36;
+
+function poolManifest() {
+  return EXPRESSION_POOL.map((line, id) => ({
+    id,
+    category: id < EMOTION_COUNT ? "emotion" : "weather",
+    label: line.split(" — ")[0],
+  }));
+}
+
+function buildPrompt(slots) {
+  // slots: length-9 array; each item is null or an object:
+  //   { exprId?: number, exprCustom?: string, weatherId?: number }
+  // Expression part: exprCustom > exprId > random emotion (0..EMOTION_COUNT-1)
+  // Weather part:    weatherId  > none  (added with " + " separator)
+  const normalized = Array.isArray(slots) && slots.length === 9
+    ? slots
+    : new Array(9).fill(null);
+
+  const usedEmotionIds = new Set();
+  normalized.forEach((s) => {
+    if (s && Number.isInteger(s.exprId) && s.exprId < EMOTION_COUNT) {
+      usedEmotionIds.add(s.exprId);
+    }
+  });
+
+  const randomEmotionQueue = shuffle(
+    EXPRESSION_POOL.slice(0, EMOTION_COUNT)
+      .map((desc, id) => ({ desc, id }))
+      .filter((e) => !usedEmotionIds.has(e.id))
+  );
+
+  const lines = normalized.map((slot) => {
+    slot = slot || {};
+    // Expression part
+    let expr;
+    if (typeof slot.exprCustom === "string" && slot.exprCustom.trim()) {
+      expr = `CUSTOM — ${slot.exprCustom.trim()}`;
+    } else if (
+      Number.isInteger(slot.exprId) &&
+      slot.exprId >= 0 &&
+      slot.exprId < EMOTION_COUNT
+    ) {
+      expr = EXPRESSION_POOL[slot.exprId];
+    } else {
+      expr = (randomEmotionQueue.pop() || { desc: "" }).desc;
+    }
+    // Weather part (optional)
+    let weather = "";
+    if (
+      Number.isInteger(slot.weatherId) &&
+      slot.weatherId >= EMOTION_COUNT &&
+      slot.weatherId < EXPRESSION_POOL.length
+    ) {
+      weather = EXPRESSION_POOL[slot.weatherId];
+    }
+    return weather ? `${expr} + ${weather}` : expr;
+  });
+
+  const numbered = lines.map((line, i) => `${i + 1}. ${line}`).join("\n");
   return `Create ONE single square image that is a 3x3 grid (3 rows × 3 columns, 9 equal square tiles) of portraits of the SAME person from the reference photo. Each tile must show a DRAMATICALLY different, theatrical, exaggerated facial expression. The nine expressions must look OBVIOUSLY different at a glance — no two tiles should be confusable.
 
-Tile-by-tile specification (mouth shape + eyes + brows must all differ):
+Tile-by-tile specification (mouth shape + eyes + brows must all differ). Any tile written as "EXPRESSION + WEATHER" means BOTH states simultaneously — e.g. "ECSTATIC LAUGHTER + DRENCHED IN RAIN" = laughing hysterically while getting poured on. Render both layers in the same tile:
 
 ${numbered}
 
@@ -112,11 +170,25 @@ export default {
     }
 
     if (request.method === "GET") {
+      const url = new URL(request.url);
+      if (url.pathname === "/pool") {
+        return json({ pool: poolManifest() }, 200, cors);
+      }
       return json({ ok: true, service: "emoji-slot-gemini" }, 200, cors);
     }
 
     if (request.method !== "POST") {
       return json({ error: "method not allowed" }, 405, cors);
+    }
+
+    // POST /prompt — returns the assembled prompt without calling Gemini.
+    // Useful for previewing or copying to other AI tools.
+    const reqUrl = new URL(request.url);
+    if (reqUrl.pathname === "/prompt") {
+      let body;
+      try { body = await request.json(); } catch { body = {}; }
+      const promptText = buildPrompt(body?.slots);
+      return json({ prompt: promptText }, 200, cors);
     }
 
     if (!env.VERTEX_API_KEY) {
@@ -130,7 +202,7 @@ export default {
       return json({ error: "invalid JSON body" }, 400, cors);
     }
 
-    const { imageBase64, mimeType = "image/jpeg", prompt, model } = body || {};
+    const { imageBase64, mimeType = "image/jpeg", prompt, model, enabledIds } = body || {};
     if (typeof imageBase64 !== "string" || imageBase64.length < 100) {
       return json({ error: "imageBase64 is required" }, 400, cors);
     }
@@ -141,7 +213,7 @@ export default {
     const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
     const chosenPrompt = typeof prompt === "string" && prompt.trim()
       ? prompt
-      : buildPrompt();
+      : buildPrompt(enabledIds);
 
     const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
 
