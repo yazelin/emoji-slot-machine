@@ -928,106 +928,72 @@ async function renderReelSlotVideo({ tiles, fps, repeats, size }) {
   const gridY = Math.round((size - gridW) / 2);
   const layout = { gridX, gridY, cellSize, gap };
 
-  // Per-reel step rate — left fastest, right slowest. Targets ~100/150/200 ms
-  // per tile; converted to frame counts and forced strictly increasing so the
-  // visual differentiation survives at low fps too.
-  const targetMsPerTile = [100, 150, 200];
-  const stepFrames = targetMsPerTile.map(
-    (ms) => Math.max(1, Math.round((ms * fps) / 1000))
-  );
-  if (stepFrames[1] <= stepFrames[0]) stepFrames[1] = stepFrames[0] + 1;
-  if (stepFrames[2] <= stepFrames[1]) stepFrames[2] = stepFrames[1] + 1;
+  // Blur-spin design (no stops, no holds, draw line on every aligned frame):
+  //
+  // Each reel steps at its own rate — fast enough to strobe-blur individual
+  // faces at fps=15:
+  //   reel 0: 1 frame per tile  (~67 ms)
+  //   reel 1: 2 frames per tile (~133 ms)
+  //   reel 2: 3 frames per tile (~200 ms)
+  // Different speeds are required — otherwise the 3 reels' relative offsets
+  // stay locked and every frame either has a line or none.
+  //
+  // startPos is seeded from a random winning pattern so f=0 of each cycle is
+  // guaranteed to land on that pattern (satisfies "at minimum one real line").
+  // Beyond that, as offsets drift across the cycle, the reel triple may
+  // accidentally coincide with other patterns from the 45 — we draw each such
+  // hit with its matching payline. Misses: blur, no line. Constant opacity
+  // and zero hold, so line frames are identical in duration and weight to
+  // non-line frames — the "抽" randomness stays.
+  const stepFrames = [1, 2, 3];
+  const N = REEL_N;
+  const seedPattern = WINNING_PATTERNS[
+    Math.floor(Math.random() * WINNING_PATTERNS.length)
+  ];
+  const startPos = seedPattern.stops.slice();
 
-  // Multi-round design: the video contains `roundCount` independent spin-and-
-  // flash cycles, each landing on a DIFFERENT winning pattern picked out of the
-  // 45 precomputed ones. Between rounds the reels immediately start spinning
-  // again — no long hold — so observers who click-to-pause on FB mostly catch
-  // the reels mid-motion, while still having a real chance of landing on a
-  // visible line. Every round is guaranteed to have a line (the short flash),
-  // so "at minimum one line exists" is satisfied by design.
-  const preRollFrames = Math.max(1, Math.round(fps * 0.15));
-  const roundCycles = 1; // each reel does 1 full revolution per round
-  const roundCount = Math.max(2, Math.min(4, Math.floor(repeats / 3)));
-  const shuffledPatterns = [...WINNING_PATTERNS].sort(() => Math.random() - 0.5);
-  const patterns = shuffledPatterns.slice(0, roundCount);
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  const lcm = (a, b) => (a * b) / gcd(a, b);
+  const cycleFrames = lcm(lcm(stepFrames[0], stepFrames[1]), stepFrames[2]) * N;
+  const cycleCount = Math.max(1, Math.floor(repeats / 5));
+  const totalFrames = cycleFrames * cycleCount;
 
-  // Flash = frames at which all 3 reels are simultaneously on target.
-  // Non-last rounds flash briefly (~2 frames); final round holds a bit longer
-  // so the video has a natural pause before looping back to frame 0.
-  const flashFramesNonLast = 2;
-  const flashFramesLast = Math.max(6, Math.round(fps * 0.5));
+  const posAt = (f, r) => (startPos[r] + Math.floor(f / stepFrames[r])) % N;
 
-  const schedules = [[], [], []];
-  const flashRanges = []; // [{ start, end, pattern }]
-  let currentStart = [0, 3, 6]; // staggered frame-0 positions so 9 distinct tiles visible
-
-  for (let round = 0; round < roundCount; round++) {
-    const isLast = round === roundCount - 1;
-    const roundPreRoll = round === 0 ? preRollFrames : 0;
-    const padFlashFrames = isLast ? flashFramesLast : flashFramesNonLast;
-
-    const roundSpins = [0, 1, 2].map((r) =>
-      buildReelSpin({
-        preRollFrames: roundPreRoll,
-        startPos: currentStart[r],
-        targetPos: patterns[round].stops[r],
-        stepFrames: stepFrames[r],
-        baseCycles: roundCycles,
-      })
-    );
-    const maxSpinLen = Math.max(...roundSpins.map((s) => s.length));
-
-    // Slowest reel (index 2) dominates round length. Its seq naturally ends
-    // with (stepFrames[2] + 2) frames at target — that's the earliest frame at
-    // which ALL three reels are on target simultaneously.
-    const reel2LandOffset = roundSpins[2].length - (stepFrames[2] + 2);
-    const roundBase = schedules[0].length;
-    const fullLineStart = roundBase + reel2LandOffset;
-
-    for (let r = 0; r < 3; r++) {
-      const seq = roundSpins[r];
-      const target = patterns[round].stops[r];
-      while (seq.length < maxSpinLen) seq.push(target);
-      for (let i = 0; i < padFlashFrames; i++) seq.push(target);
-      schedules[r].push(...seq);
+  // Pre-scan the cycle: for each frame, record the matching pattern (if any).
+  const patternForCycleFrame = new Array(cycleFrames).fill(null);
+  let lineFrameCount = 0;
+  for (let f = 0; f < cycleFrames; f++) {
+    const p0 = posAt(f, 0), p1 = posAt(f, 1), p2 = posAt(f, 2);
+    for (const pat of WINNING_PATTERNS) {
+      if (pat.stops[0] === p0 && pat.stops[1] === p1 && pat.stops[2] === p2) {
+        patternForCycleFrame[f] = pat;
+        lineFrameCount++;
+        break;
+      }
     }
-
-    flashRanges.push({
-      start: fullLineStart,
-      end: schedules[0].length,
-      pattern: patterns[round],
-    });
-    currentStart = [0, 1, 2].map((r) => patterns[round].stops[r]);
   }
-
-  const totalFrames = schedules[0].length;
 
   const frameMs = 1000 / fps;
   for (let f = 0; f < totalFrames; f++) {
+    const cf = f % cycleFrames;
     drawReelBackground(ctx, size);
 
     for (let r = 0; r < 3; r++) {
       const colX = gridX + r * (cellSize + gap);
-      drawReelColumn(ctx, tiles, colX, gridY, cellSize, schedules[r][f]);
+      drawReelColumn(ctx, tiles, colX, gridY, cellSize, posAt(cf, r));
     }
 
-    // Draw payline + glow only while we're inside a "full line visible"
-    // window — the brief flash per round. Fades in fast so the 2-frame flashes
-    // are still visible; pulses at a high rate so even 1-frame pauses show life.
-    const flash = flashRanges.find((fr) => f >= fr.start && f < fr.end);
-    if (flash) {
-      const heldFrames = f - flash.start;
-      const heldSec = heldFrames / fps;
-      const fadeIn = Math.min(1, heldSec / 0.1 + 0.3);
-      const pulse = 0.7 + 0.3 * Math.sin(heldSec * Math.PI * 4);
-      drawPayline(ctx, flash.pattern, layout, fadeIn * 0.95);
-      drawWinningGlow(ctx, flash.pattern, layout, fadeIn * pulse);
+    const pattern = patternForCycleFrame[cf];
+    if (pattern) {
+      drawPayline(ctx, pattern, layout, 0.85);
+      drawWinningGlow(ctx, pattern, layout, 0.55);
     }
 
     if (canRequestFrame) track.requestFrame();
     setProgress(
       Math.round((f / totalFrames) * 95),
-      `渲染中 ${f + 1}/${totalFrames}（${roundCount} 輪連線）`
+      `渲染中 ${f + 1}/${totalFrames}（週期 ${cycleFrames} frame 內有 ${lineFrameCount} 個連線 frame）`
     );
     await sleep(frameMs);
   }
