@@ -3,8 +3,6 @@
 // We add the API key (stored as a Worker Secret) and forward to Vertex AI,
 // then return the generated image as base64.
 
-import { LAYOUT_SCAFFOLD_B64, LAYOUT_SCAFFOLD_MIME } from "./layout_scaffold.js";
-
 const DEFAULT_MODEL = "gemini-3.1-flash-image-preview";
 const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB decoded image size
 
@@ -282,15 +280,7 @@ export default {
         {
           role: "user",
           parts: [
-            // 1. The subject (identity / style source)
             { inlineData: { mimeType, data: imageBase64 } },
-            // 2. A 3×3 scaffold labelled A..I — positional template.
-            {
-              inlineData: {
-                mimeType: LAYOUT_SCAFFOLD_MIME,
-                data: LAYOUT_SCAFFOLD_B64,
-              },
-            },
             { text: chosenPrompt },
           ],
         },
