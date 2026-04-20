@@ -137,22 +137,35 @@ function buildPrompt(slots) {
     return weather ? `${expr} + ${weather}` : expr;
   });
 
-  // Spatially label each bullet so Gemini knows which cell each goes in.
-  // Lowercase content avoids getting transcribed as on-image text.
-  const POSITIONS = [
+  // Anchor each cell with (1) a letter label (2) a row/column call-out
+  // (3) an ASCII diagram so Gemini has a visual map of positions.
+  const L = lines.map((l) => l.toLowerCase());
+  const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+  const diagram = `\`\`\`
++------+------+------+
+|  A   |  B   |  C   |   ← top row
++------+------+------+
+|  D   |  E   |  F   |   ← middle row
++------+------+------+
+|  G   |  H   |  I   |   ← bottom row
++------+------+------+
+   ↑      ↑      ↑
+ left  centre right
+\`\`\``;
+  const NAMES = [
     "top-left",
-    "top-center",
+    "top-centre",
     "top-right",
     "middle-left",
-    "middle-center",
+    "middle-centre",
     "middle-right",
     "bottom-left",
-    "bottom-center",
+    "bottom-centre",
     "bottom-right",
   ];
-  const bullets = lines
-    .map((line, i) => `• ${POSITIONS[i]} tile: ${line.toLowerCase()}`)
-    .join("\n");
+  const layout = LETTERS.map(
+    (letter, i) => `  [${letter}] ${NAMES[i]} cell → ${L[i]}`
+  ).join("\n");
 
   return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square portraits of the same subject from the reference image. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
 
@@ -165,19 +178,22 @@ CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is,
 • If reference is a statue / deity / sculpture → keep sculptural look.
 Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
-Each bullet below describes EXACTLY ONE tile at a specific position. Render that expression in that position — do not re-order, do not merge two bullets into one tile, do not skip any bullet. All nine bullets MUST appear, each in its labelled cell:
+The 3×3 layout uses the following cell labels (A..I). Each cell must show EXACTLY the expression listed for its letter — do not swap cells, do not merge, do not skip any cell:
 
-${bullets}
+${diagram}
 
-A bullet written as "<state> + <weather>" means the tile shows both at once — e.g. "ecstatic laughter + drenched in rain" = the subject laughing while being poured on. Both states are rendered in the reference's own style (cartoon rain for a cartoon, photoreal rain for a photo, etc.).
+${layout}
 
-Identity stays constant across every tile: same face/features, colours, hairstyle, clothing, and background treatment as the reference. Weather bullets (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin/surface (wet, flushed, frosted, cracked) — that is expected. The SUBJECT must still be clearly the same character.
+A cell written as "<state> + <weather>" means that tile shows both at once — e.g. "ecstatic laughter + drenched in rain" = the subject laughing while being poured on. Render both layers in the reference's own style (cartoon rain for a cartoon, photoreal rain for a photo, etc.).
+
+Identity stays constant across every cell: same face/features, colours, hairstyle, clothing, and background treatment as the reference. Weather states (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin/surface (wet, flushed, frosted, cracked) — that is expected. The SUBJECT must still be clearly the same character.
 
 OUTPUT RULES — strictly enforced:
-- Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, or arrows anywhere on the image.
-- Do NOT write the expression names on the tiles. The bullets above are instructions for you, not text to paint.
-- No borders, gutters, or dividers between tiles — it is one seamless 1:1 image.
-- Two tiles with the same mouth shape or same eye state are NOT allowed.
+- Final image is a 3×3 photographic grid only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, arrows, or the letter labels (A..I) anywhere on the image.
+- Do NOT write the expression names on the tiles. The layout above is instruction for you, not text to paint.
+- No visible borders, gutters, dividers, or ASCII lines between tiles — it is one seamless 1:1 image.
+- Each cell must correspond to EXACTLY the state mapped to its letter in the layout above. No swapping, no re-ordering, no skipping.
+- Two cells with the same mouth shape or same eye state are NOT allowed.
 - The art style MUST match the reference.`;
 }
 
