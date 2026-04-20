@@ -171,14 +171,14 @@ function refreshSlotStatus() {
   }
   if (exprCustomised === 0 && weatherPinned === 0 && weatherOff === 0) {
     slotStatusText.textContent =
-      "🎲 目前：9 種組合全交給 AI（表情 + 有時天氣）";
+      "🎲 目前：9 格全隨機（表情 + 有時天氣）";
     return;
   }
   const parts = [];
   if (exprCustomised > 0) parts.push(`指定 ${exprCustomised} 種表情`);
   if (weatherPinned > 0) parts.push(`指定 ${weatherPinned} 種天氣`);
   if (weatherOff > 0) parts.push(`${weatherOff} 種關天氣`);
-  slotStatusText.textContent = `🎨 你挑了：${parts.join("、")}（位置由 AI 決定）`;
+  slotStatusText.textContent = `🎨 你挑了：${parts.join("、")}，其他交給 AI`;
 }
 
 async function ensurePoolLoaded() {
@@ -220,7 +220,7 @@ function buildSlotCell(index, slotValue) {
 
   const head = document.createElement("div");
   head.className = "slot-head";
-  head.textContent = `組合 ${index + 1}`;
+  head.textContent = `第 ${index + 1} 格`;
   cell.appendChild(head);
 
   // Expression select

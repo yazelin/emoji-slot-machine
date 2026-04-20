@@ -113,7 +113,7 @@
       <a href="https://buymeacoffee.com/yazelin" target="_blank" rel="noopener">請我喝杯咖啡</a>。
     </p>
     <p class="hint rpm-hint">
-      ⚠️ 使用人多時可能撞到 API 速率上限，若生成失敗：<strong>按「挑我要的組合」→ 複製到 Gemini</strong>，貼進
+      ⚠️ 使用人多時可能撞到 API 速率上限，若生成失敗：<strong>按「自訂 9 格」→ 複製到 Gemini</strong>，貼進
       <a href="https://gemini.google.com" target="_blank" rel="noopener">gemini.google.com</a> 自己跑，
       產好 3×3 圖再到下面①直接上傳即可，不用排隊、也不會吃作者的 API 額度。
     </p>
@@ -132,8 +132,8 @@
     </div>
 
     <div class="slot-status" id="slot-status">
-      <span class="slot-status-text" id="slot-status-text">🎲 目前：9 種組合全交給 AI（表情 + 有時天氣）</span>
-      <button type="button" class="link-btn" id="open-settings-link">挑我要的組合</button>
+      <span class="slot-status-text" id="slot-status-text">🎲 目前：9 格全隨機（表情 + 有時天氣）</span>
+      <button type="button" class="link-btn" id="open-settings-link">自訂 9 格</button>
     </div>
 
     <button class="primary" id="ai-generate-btn" disabled>
@@ -148,11 +148,10 @@
 
   <dialog id="settings-dialog">
     <form method="dialog">
-      <h3>挑這次要出現的 9 種組合</h3>
+      <h3>自訂 9 格（表情 × 天氣）</h3>
       <p class="hint">
-        每個組合可選一種表情（36 種）＋一種天氣（9 種），或自己打一句描述。
-        <strong>位置由 AI 決定</strong>，反正最終影片會洗牌成拉霸機；
-        你只要告訴它「這次的 9 種組合要出什麼」。
+        每一格可挑一種表情（36 種）＋一種天氣（9 種），或自己打一句描述，
+        或留「隨機」讓 AI 抽。
       </p>
       <div class="slot-grid" id="slot-grid"></div>
       <p class="hint" id="slots-copy-status" hidden></p>
