@@ -127,8 +127,8 @@
     </div>
 
     <div class="slot-status" id="slot-status">
-      <span class="slot-status-text" id="slot-status-text">🎲 目前：全部 9 格隨機</span>
-      <button type="button" class="link-btn" id="open-settings-link">自訂 9 格</button>
+      <span class="slot-status-text" id="slot-status-text">🎲 目前：9 種組合全交給 AI（表情 + 有時天氣）</span>
+      <button type="button" class="link-btn" id="open-settings-link">挑我要的組合</button>
     </div>
 
     <button class="primary" id="ai-generate-btn" disabled>
@@ -143,8 +143,12 @@
 
   <dialog id="settings-dialog">
     <form method="dialog">
-      <h3>自訂 9 格表情</h3>
-      <p class="hint">每一格可從 45 種預設裡挑，或選「自訂」自己打一句描述。留「隨機」就讓 AI 幫你抽。</p>
+      <h3>挑這次要出現的 9 種組合</h3>
+      <p class="hint">
+        每個組合可選一種表情（36 種）＋一種天氣（9 種），或自己打一句描述。
+        <strong>位置由 AI 決定</strong>，反正最終影片會洗牌成拉霸機；
+        你只要告訴它「這次的 9 種組合要出什麼」。
+      </p>
       <div class="slot-grid" id="slot-grid"></div>
       <p class="hint" id="slots-copy-status" hidden></p>
       <menu>

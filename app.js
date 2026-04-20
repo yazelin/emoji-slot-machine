@@ -170,15 +170,15 @@ function refreshSlotStatus() {
     else if (slot.weatherNone) weatherOff += 1;
   }
   if (exprCustomised === 0 && weatherPinned === 0 && weatherOff === 0) {
-    slotStatusText.textContent = "🎲 目前：9 格全隨機（表情 + 有時會出現天氣）";
+    slotStatusText.textContent =
+      "🎲 目前：9 種組合全交給 AI（表情 + 有時天氣）";
     return;
   }
   const parts = [];
-  if (exprCustomised > 0) parts.push(`${exprCustomised} 格指定表情`);
-  if (weatherPinned > 0) parts.push(`${weatherPinned} 格指定天氣`);
-  if (weatherOff > 0) parts.push(`${weatherOff} 格關天氣`);
-  const rest = 9 - Math.max(exprCustomised, weatherPinned, weatherOff);
-  slotStatusText.textContent = `🎨 自訂設定：${parts.join("、")}，其他格隨機`;
+  if (exprCustomised > 0) parts.push(`指定 ${exprCustomised} 種表情`);
+  if (weatherPinned > 0) parts.push(`指定 ${weatherPinned} 種天氣`);
+  if (weatherOff > 0) parts.push(`${weatherOff} 種關天氣`);
+  slotStatusText.textContent = `🎨 你挑了：${parts.join("、")}（位置由 AI 決定）`;
 }
 
 async function ensurePoolLoaded() {
@@ -220,7 +220,7 @@ function buildSlotCell(index, slotValue) {
 
   const head = document.createElement("div");
   head.className = "slot-head";
-  head.textContent = `第 ${index + 1} 格`;
+  head.textContent = `組合 ${index + 1}`;
   cell.appendChild(head);
 
   // Expression select
