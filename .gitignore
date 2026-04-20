@@ -15,3 +15,5 @@ test_no_text.png
 test_positions*.png
 layout_scaffold.b64
 
+test_pairing_*.png
+test_raw_*.png
