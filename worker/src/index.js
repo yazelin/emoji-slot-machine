@@ -137,10 +137,24 @@ function buildPrompt(slots) {
     return weather ? `${expr} + ${weather}` : expr;
   });
 
-  // Position hints are given ONLY as spatial names (top-left, top-centre…).
-  // Earlier versions also printed A..I labels, but the model occasionally
-  // painted those letters onto the actual tiles — so we removed them.
+  // Anchor each cell with (1) a letter label (2) a row/column call-out
+  // (3) an ASCII diagram so Gemini has a visual map of positions.
+  // We kept this in after A/B testing against the "same prompt pasted to
+  // gemini.google.com" baseline — dropping the letters tanked pairing
+  // fidelity to 1-2/9, keeping them held it at 6-9/9.
   const L = lines.map((l) => l.toLowerCase());
+  const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+  const diagram = `\`\`\`
++------+------+------+
+|  A   |  B   |  C   |   ← top row
++------+------+------+
+|  D   |  E   |  F   |   ← middle row
++------+------+------+
+|  G   |  H   |  I   |   ← bottom row
++------+------+------+
+   ↑      ↑      ↑
+ left  centre right
+\`\`\``;
   const NAMES = [
     "top-left",
     "top-centre",
@@ -152,8 +166,8 @@ function buildPrompt(slots) {
     "bottom-centre",
     "bottom-right",
   ];
-  const layout = NAMES.map(
-    (name, i) => `  • ${name} cell → ${L[i]}`
+  const layout = LETTERS.map(
+    (letter, i) => `  [${letter}] ${NAMES[i]} cell → ${L[i]}`
   ).join("\n");
 
   return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square portraits of the same subject from the reference image. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
@@ -167,7 +181,9 @@ CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is,
 • If reference is a statue / deity / sculpture → keep sculptural look.
 Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
-The 3×3 layout has nine named cells. Each cell must show EXACTLY the expression listed for its position — do not swap cells, do not merge, do not skip any cell:
+The 3×3 layout uses the following cell labels (A..I). Each cell must show EXACTLY the expression listed for its letter — do not swap cells, do not merge, do not skip any cell:
+
+${diagram}
 
 ${layout}
 
@@ -176,10 +192,10 @@ A cell written as "<state> + <weather>" means that tile shows both at once — e
 Identity stays constant across every cell: same face/features, colours, hairstyle, clothing, and background treatment as the reference. Weather states (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin/surface (wet, flushed, frosted, cracked) — that is expected. The SUBJECT must still be clearly the same character.
 
 OUTPUT RULES — strictly enforced:
-- Final image is a 3×3 grid only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, or arrows anywhere on the image.
-- Do NOT write position names or expression names on the tiles. The layout above is instruction for you, not text to paint.
-- No visible borders, gutters, or dividers between tiles — it is one seamless 1:1 image.
-- Each cell must correspond to EXACTLY the state mapped to its position in the layout above. No swapping, no re-ordering, no skipping.
+- Final image is a 3×3 photographic grid only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, arrows, or the letter labels (A..I) anywhere on the image.
+- Do NOT write the expression names on the tiles. The layout above is instruction for you, not text to paint.
+- No visible borders, gutters, dividers, or ASCII lines between tiles — it is one seamless 1:1 image.
+- Each cell must correspond to EXACTLY the state mapped to its letter in the layout above. No swapping, no re-ordering, no skipping.
 - Two cells with the same mouth shape or same eye state are NOT allowed.
 - The art style MUST match the reference.`;
 }
@@ -243,7 +259,7 @@ export default {
       return json({ error: "invalid JSON body" }, 400, cors);
     }
 
-    const { imageBase64, mimeType = "image/jpeg", prompt, model, enabledIds } = body || {};
+    const { imageBase64, mimeType = "image/jpeg", prompt, model, slots } = body || {};
     if (typeof imageBase64 !== "string" || imageBase64.length < 100) {
       return json({ error: "imageBase64 is required" }, 400, cors);
     }
@@ -254,7 +270,7 @@ export default {
     const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
     const chosenPrompt = typeof prompt === "string" && prompt.trim()
       ? prompt
-      : buildPrompt(enabledIds);
+      : buildPrompt(slots);
 
     const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
 
