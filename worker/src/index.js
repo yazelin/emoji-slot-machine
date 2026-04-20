@@ -105,24 +105,7 @@ function buildPrompt(slots) {
       .filter((e) => !usedEmotionIds.has(e.id))
   );
 
-  // Track weather IDs already used (explicitly pinned by the user) so that
-  // random weather rolls never pick the same one twice across the grid.
-  const usedWeatherIds = new Set();
-  normalized.forEach((s) => {
-    if (
-      s &&
-      Number.isInteger(s.weatherId) &&
-      s.weatherId >= EMOTION_COUNT &&
-      s.weatherId < EXPRESSION_POOL.length
-    ) {
-      usedWeatherIds.add(s.weatherId);
-    }
-  });
-  const randomWeatherQueue = shuffle(
-    EXPRESSION_POOL.slice(EMOTION_COUNT)
-      .map((desc, i) => ({ desc, id: EMOTION_COUNT + i }))
-      .filter((w) => !usedWeatherIds.has(w.id))
-  );
+  const weatherPool = EXPRESSION_POOL.slice(EMOTION_COUNT);
 
   const lines = normalized.map((slot) => {
     slot = slot || {};
@@ -139,8 +122,8 @@ function buildPrompt(slots) {
     } else {
       expr = (randomEmotionQueue.pop() || { desc: "" }).desc;
     }
-    // Weather — explicit pins always win. Random rolls draw from a
-    // shuffled queue so weather never duplicates across the grid.
+    // Weather — each slot rolls independently. Duplicates across the
+    // grid are allowed because "random" should just be random.
     let weather = "";
     if (
       Number.isInteger(slot.weatherId) &&
@@ -149,8 +132,7 @@ function buildPrompt(slots) {
     ) {
       weather = EXPRESSION_POOL[slot.weatherId];
     } else if (!slot.weatherNone && Math.random() < RANDOM_WEATHER_CHANCE) {
-      const picked = randomWeatherQueue.pop();
-      if (picked) weather = picked.desc;
+      weather = weatherPool[Math.floor(Math.random() * weatherPool.length)];
     }
     return weather ? `${expr} + ${weather}` : expr;
   });
