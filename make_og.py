@@ -84,21 +84,24 @@ def main() -> None:
         fill=MUTED,
         font=sub_font,
     )
-    # CTA pill
+    # CTA pill — size the rectangle to the text instead of guessing.
+    cta_text = "點開，讓你的臉上場"
+    bbox = d.textbbox((0, 0), cta_text, font=cta_font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    pad_x, pad_y = 32, 16
+    pill_w = text_w + pad_x * 2
+    pill_h = text_h + pad_y * 2
     pill_y = 425
-    pill_h = 54
-    pill_w = 340
     d.rounded_rectangle(
         (text_x, pill_y, text_x + pill_w, pill_y + pill_h),
         radius=pill_h // 2,
         fill=ACCENT,
     )
-    d.text(
-        (text_x + 30, pill_y + 13),
-        "點開，讓你的臉上場",
-        fill=(255, 255, 255),
-        font=cta_font,
-    )
+    # textbbox baseline offset: subtract bbox[0]/bbox[1] to land at intended xy
+    tx = text_x + pad_x - bbox[0]
+    ty = pill_y + pad_y - bbox[1]
+    d.text((tx, ty), cta_text, fill=(255, 255, 255), font=cta_font)
 
     canvas = canvas.convert("RGB")
     out_path = ROOT / "og.png"
