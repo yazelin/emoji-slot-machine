@@ -3,6 +3,8 @@
 // We add the API key (stored as a Worker Secret) and forward to Vertex AI,
 // then return the generated image as base64.
 
+import { LAYOUT_SCAFFOLD_B64, LAYOUT_SCAFFOLD_MIME } from "./layout_scaffold.js";
+
 const DEFAULT_MODEL = "gemini-3.1-flash-image-preview";
 const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB decoded image size
 
@@ -178,7 +180,11 @@ CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is,
 • If reference is a statue / deity / sculpture → keep sculptural look.
 Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
-The 3×3 layout uses the following cell labels (A..I). Each cell must show EXACTLY the expression listed for its letter — do not swap cells, do not merge, do not skip any cell:
+You are given TWO reference images:
+  1. FIRST image — the SUBJECT whose face/style you must preserve in every cell.
+  2. SECOND image — a 3×3 layout scaffold with cell positions labelled A, B, C, D, E, F, G, H, I. This defines EXACTLY which cell is which.
+
+Treat the second image as the positional template. The output image has the same 3×3 structure. Each cell must render the expression mapped to its letter below — do not swap cells, do not merge, do not skip, do not copy the letters themselves.
 
 ${diagram}
 
@@ -276,7 +282,15 @@ export default {
         {
           role: "user",
           parts: [
+            // 1. The subject (identity / style source)
             { inlineData: { mimeType, data: imageBase64 } },
+            // 2. A 3×3 scaffold labelled A..I — positional template.
+            {
+              inlineData: {
+                mimeType: LAYOUT_SCAFFOLD_MIME,
+                data: LAYOUT_SCAFFOLD_B64,
+              },
+            },
             { text: chosenPrompt },
           ],
         },

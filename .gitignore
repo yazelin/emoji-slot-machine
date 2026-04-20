@@ -8,3 +8,10 @@ node_modules/
 test_3x3_*.png
 .wrangler/
 .dev.vars
+
+# generated test artefacts
+test_3x3_*.png
+test_no_text.png
+test_positions*.png
+layout_scaffold.b64
+
