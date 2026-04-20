@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>表情拉霸機 Emoji Slot Machine</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<header>
+  <h1>🎰 表情拉霸機</h1>
+  <p class="tagline">上傳 3×3 表情圖 → 自動做成 FB 可分享的拉霸影片</p>
+</header>
+
+<main>
+  <section class="card" id="step-upload">
+    <h2>① 上傳 3×3 九宮格圖</h2>
+    <p class="hint">先用 Gemini 之類的 AI 產生一張 3×3 九宮格表情圖，再丟進來。</p>
+    <label class="upload-box" id="drop-zone">
+      <input type="file" id="file-input" accept="image/*" hidden />
+      <span class="upload-icon">📤</span>
+      <span>點擊或拖曳圖片到這裡</span>
+    </label>
+    <div id="source-preview" hidden>
+      <img id="source-img" alt="來源圖" />
+      <button class="ghost" id="clear-btn">換一張</button>
+    </div>
+  </section>
+
+  <section class="card" id="step-tiles" hidden>
+    <h2>② 自動拆出 9 張表情</h2>
+    <div class="tiles-grid" id="tiles-grid"></div>
+  </section>
+
+  <section class="card" id="step-video" hidden>
+    <h2>③ 生成拉霸影片</h2>
+    <div class="video-controls">
+      <label>FPS
+        <input type="number" id="fps-input" value="10" min="5" max="30" />
+      </label>
+      <label>循環次數
+        <input type="number" id="repeats-input" value="7" min="1" max="20" />
+      </label>
+      <label>尺寸
+        <select id="size-input">
+          <option value="720">720 × 720</option>
+          <option value="1080" selected>1080 × 1080</option>
+        </select>
+      </label>
+    </div>
+    <button class="primary" id="generate-btn">生成影片</button>
+    <div id="progress" hidden>
+      <div class="bar"><div class="bar-fill" id="bar-fill"></div></div>
+      <span id="progress-text">準備中…</span>
+    </div>
+    <div id="video-output" hidden>
+      <video id="preview-video" controls loop muted playsinline></video>
+      <div class="actions">
+        <a class="primary" id="download-btn" download="slot-machine.webm">⬇ 下載影片</a>
+        <button class="ghost" id="share-btn">📤 分享 / 傳給 FB</button>
+      </div>
+      <p class="hint">
+        將下載的影片上傳到 Facebook 貼文即可。FB 會自動循環播放；觀眾點一下影片，就會停在一個隨機表情 🎲
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <p>Made with ❤ · <a href="https://github.com/yazelin/emoji-slot-machine" target="_blank" rel="noopener">GitHub</a></p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
