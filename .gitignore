@@ -3,3 +3,8 @@ node_modules/
 *.log
 .vscode/
 .idea/
+
+# local test artefacts (do not commit)
+test_3x3_*.png
+.wrangler/
+.dev.vars

@@ -2,11 +2,162 @@
 
 const $ = (id) => document.getElementById(id);
 
+const API_URL_KEY = "slot-api-url";
+
 const state = {
   sourceImage: null,   // HTMLImageElement
   tiles: [],           // HTMLImageElement[] length 9
   videoBlob: null,     // Blob
+  selfieFile: null,    // File uploaded by user
 };
+
+// ---------- AI: generate 3x3 from selfie ----------
+
+const selfieDrop = $("selfie-drop");
+const selfieInput = $("selfie-input");
+const selfiePreview = $("selfie-preview");
+const selfieImg = $("selfie-img");
+const selfieClear = $("selfie-clear");
+const aiGenerateBtn = $("ai-generate-btn");
+const aiProgress = $("ai-progress");
+const aiBarFill = $("ai-bar-fill");
+const aiProgressText = $("ai-progress-text");
+
+const settingsBtn = $("settings-btn");
+const settingsDialog = $("settings-dialog");
+const apiUrlInput = $("api-url-input");
+const apiSaveBtn = $("api-save");
+
+selfieDrop.addEventListener("click", () => selfieInput.click());
+selfieInput.addEventListener("change", (e) => handleSelfie(e.target.files[0]));
+["dragenter", "dragover"].forEach((ev) =>
+  selfieDrop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    selfieDrop.classList.add("dragover");
+  })
+);
+["dragleave", "drop"].forEach((ev) =>
+  selfieDrop.addEventListener(ev, (e) => {
+    e.preventDefault();
+    selfieDrop.classList.remove("dragover");
+  })
+);
+selfieDrop.addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files?.[0];
+  if (f) handleSelfie(f);
+});
+
+selfieClear.addEventListener("click", () => {
+  state.selfieFile = null;
+  selfieInput.value = "";
+  selfiePreview.hidden = true;
+  selfieDrop.hidden = false;
+  aiGenerateBtn.disabled = true;
+});
+
+settingsBtn.addEventListener("click", () => {
+  apiUrlInput.value = localStorage.getItem(API_URL_KEY) || "";
+  settingsDialog.showModal();
+});
+apiSaveBtn.addEventListener("click", (e) => {
+  const v = apiUrlInput.value.trim();
+  if (v) localStorage.setItem(API_URL_KEY, v);
+  else localStorage.removeItem(API_URL_KEY);
+});
+
+async function handleSelfie(file) {
+  if (!file || !file.type.startsWith("image/")) {
+    alert("請上傳圖片檔");
+    return;
+  }
+  state.selfieFile = file;
+  selfieImg.src = URL.createObjectURL(file);
+  selfieDrop.hidden = true;
+  selfiePreview.hidden = false;
+  aiGenerateBtn.disabled = false;
+}
+
+aiGenerateBtn.addEventListener("click", async () => {
+  if (!state.selfieFile) return;
+  let apiUrl = localStorage.getItem(API_URL_KEY);
+  if (!apiUrl) {
+    apiUrl = prompt(
+      "請輸入 Cloudflare Worker URL（例：https://emoji-slot-gemini.xxx.workers.dev）"
+    );
+    if (!apiUrl) return;
+    localStorage.setItem(API_URL_KEY, apiUrl.trim());
+  }
+
+  aiGenerateBtn.disabled = true;
+  aiProgress.hidden = false;
+  setAiProgress(10, "縮圖中…");
+
+  try {
+    const { base64, mimeType } = await fileToResizedBase64(state.selfieFile, 1280);
+    setAiProgress(30, "呼叫 Gemini 生成中…（約 10–30 秒）");
+
+    const resp = await fetch(apiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imageBase64: base64, mimeType }),
+    });
+
+    if (!resp.ok) {
+      const detail = await resp.text();
+      throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 300)}`);
+    }
+
+    const data = await resp.json();
+    setAiProgress(90, "載入結果…");
+
+    const gridUrl = `data:${data.mimeType};base64,${data.data}`;
+    const img = await loadImage(gridUrl);
+
+    // Feed the generated 3x3 into the existing pipeline.
+    state.sourceImage = img;
+    sourceImg.src = gridUrl;
+    dropZone.hidden = true;
+    sourcePreview.hidden = false;
+
+    await splitIntoTiles(img);
+    $("step-tiles").hidden = false;
+    $("step-video").hidden = false;
+
+    setAiProgress(100, `✅ 生成完成，已拆好 9 張`);
+
+    $("step-upload").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    console.error(err);
+    setAiProgress(0, `❌ 失敗：${err.message}`);
+  } finally {
+    aiGenerateBtn.disabled = false;
+  }
+});
+
+function setAiProgress(pct, text) {
+  aiBarFill.style.width = `${pct}%`;
+  aiProgressText.textContent = text;
+}
+
+async function fileToResizedBase64(file, maxSide) {
+  const img = await loadImage(URL.createObjectURL(file));
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = Math.round(img.naturalWidth * scale);
+  const h = Math.round(img.naturalHeight * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/jpeg", 0.9));
+  const dataUrl = await new Promise((res, rej) => {
+    const reader = new FileReader();
+    reader.onload = () => res(reader.result);
+    reader.onerror = () => rej(reader.error);
+    reader.readAsDataURL(blob);
+  });
+  return { base64: dataUrl.split(",")[1], mimeType: "image/jpeg" };
+}
 
 // ---------- Upload ----------
 

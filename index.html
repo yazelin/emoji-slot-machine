@@ -13,9 +13,48 @@
 </header>
 
 <main>
+  <section class="card" id="step-ai-gen">
+    <div class="card-header">
+      <h2>⓪ 從自拍生成 3×3（AI）</h2>
+      <button class="icon-btn" id="settings-btn" title="API 設定">⚙️</button>
+    </div>
+    <p class="hint">上傳一張清楚的自拍，AI 會自動產出 9 種誇張表情的 3×3 圖。或直接跳到下面「①」自己上傳現成的 3×3。</p>
+
+    <label class="upload-box compact" id="selfie-drop">
+      <input type="file" id="selfie-input" accept="image/*" hidden />
+      <span class="upload-icon">🤳</span>
+      <span>點擊或拖曳自拍到這裡</span>
+    </label>
+    <div id="selfie-preview" hidden>
+      <img id="selfie-img" alt="自拍預覽" />
+      <button class="ghost" id="selfie-clear">換一張自拍</button>
+    </div>
+
+    <button class="primary" id="ai-generate-btn" disabled>✨ 生成 3×3 表情圖</button>
+    <div id="ai-progress" hidden>
+      <div class="bar"><div class="bar-fill" id="ai-bar-fill"></div></div>
+      <span id="ai-progress-text">呼叫 Gemini…</span>
+    </div>
+  </section>
+
+  <dialog id="settings-dialog">
+    <form method="dialog">
+      <h3>API 設定</h3>
+      <label class="field">
+        Worker URL
+        <input type="url" id="api-url-input" placeholder="https://emoji-slot-gemini.xxx.workers.dev" />
+      </label>
+      <p class="hint">部署完 Cloudflare Worker 後把網址貼進來。存在瀏覽器本機，不會上傳。</p>
+      <menu>
+        <button value="cancel">取消</button>
+        <button value="save" id="api-save" class="primary">儲存</button>
+      </menu>
+    </form>
+  </dialog>
+
   <section class="card" id="step-upload">
-    <h2>① 上傳 3×3 九宮格圖</h2>
-    <p class="hint">先用 Gemini 之類的 AI 產生一張 3×3 九宮格表情圖，再丟進來。</p>
+    <h2>① 3×3 九宮格圖</h2>
+    <p class="hint">上面 AI 產生的、或自己上傳皆可。</p>
     <label class="upload-box" id="drop-zone">
       <input type="file" id="file-input" accept="image/*" hidden />
       <span class="upload-icon">📤</span>

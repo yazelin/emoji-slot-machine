@@ -87,6 +87,107 @@ main {
 
 .upload-icon { font-size: 2.2rem; }
 
+.upload-box.compact {
+  padding: 1.5rem 1rem;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-header h2 { margin: 0; }
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.3rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.icon-btn:hover {
+  background: var(--card-hover);
+  color: var(--text);
+}
+
+#selfie-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+#selfie-img {
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
+.ai-controls {
+  margin: 1rem 0 0.75rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.field input,
+.field select {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+  width: 100%;
+  font-family: inherit;
+}
+
+#ai-progress {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+dialog {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.5rem;
+  max-width: 500px;
+  width: calc(100% - 2rem);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+}
+
+dialog h3 { margin-top: 0; }
+
+dialog menu {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin: 1rem 0 0;
+  padding: 0;
+}
+
+dialog menu button {
+  padding: 0.5rem 1rem;
+}
+
 #source-preview {
   display: flex;
   flex-direction: column;

@@ -1,0 +1,9 @@
+name = "emoji-slot-gemini"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# VERTEX_API_KEY is set via:
+#   npx wrangler secret put VERTEX_API_KEY
+#
+# Optional vars (non-secret):
+#   DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
