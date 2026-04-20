@@ -105,7 +105,24 @@ function buildPrompt(slots) {
       .filter((e) => !usedEmotionIds.has(e.id))
   );
 
-  const weatherPool = EXPRESSION_POOL.slice(EMOTION_COUNT);
+  // Track weather IDs already used (explicitly pinned by the user) so that
+  // random weather rolls never pick the same one twice across the grid.
+  const usedWeatherIds = new Set();
+  normalized.forEach((s) => {
+    if (
+      s &&
+      Number.isInteger(s.weatherId) &&
+      s.weatherId >= EMOTION_COUNT &&
+      s.weatherId < EXPRESSION_POOL.length
+    ) {
+      usedWeatherIds.add(s.weatherId);
+    }
+  });
+  const randomWeatherQueue = shuffle(
+    EXPRESSION_POOL.slice(EMOTION_COUNT)
+      .map((desc, i) => ({ desc, id: EMOTION_COUNT + i }))
+      .filter((w) => !usedWeatherIds.has(w.id))
+  );
 
   const lines = normalized.map((slot) => {
     slot = slot || {};
@@ -122,7 +139,8 @@ function buildPrompt(slots) {
     } else {
       expr = (randomEmotionQueue.pop() || { desc: "" }).desc;
     }
-    // Weather
+    // Weather — explicit pins always win. Random rolls draw from a
+    // shuffled queue so weather never duplicates across the grid.
     let weather = "";
     if (
       Number.isInteger(slot.weatherId) &&
@@ -131,15 +149,27 @@ function buildPrompt(slots) {
     ) {
       weather = EXPRESSION_POOL[slot.weatherId];
     } else if (!slot.weatherNone && Math.random() < RANDOM_WEATHER_CHANCE) {
-      weather = weatherPool[Math.floor(Math.random() * weatherPool.length)];
+      const picked = randomWeatherQueue.pop();
+      if (picked) weather = picked.desc;
     }
     return weather ? `${expr} + ${weather}` : expr;
   });
 
-  // Lowercase, dashless list — avoids Gemini transcribing the descriptors
-  // as visible labels on each tile.
+  // Spatially label each bullet so Gemini knows which cell each goes in.
+  // Lowercase content avoids getting transcribed as on-image text.
+  const POSITIONS = [
+    "top-left",
+    "top-center",
+    "top-right",
+    "middle-left",
+    "middle-center",
+    "middle-right",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right",
+  ];
   const bullets = lines
-    .map((line) => "• " + line.toLowerCase())
+    .map((line, i) => `• ${POSITIONS[i]} tile: ${line.toLowerCase()}`)
     .join("\n");
 
   return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square portraits of the same subject from the reference image. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
@@ -153,7 +183,7 @@ CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is,
 • If reference is a statue / deity / sculpture → keep sculptural look.
 Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
-Reading left-to-right, top-to-bottom, the nine tiles are:
+Each bullet below describes EXACTLY ONE tile at a specific position. Render that expression in that position — do not re-order, do not merge two bullets into one tile, do not skip any bullet. All nine bullets MUST appear, each in its labelled cell:
 
 ${bullets}
 
