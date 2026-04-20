@@ -137,21 +137,10 @@ function buildPrompt(slots) {
     return weather ? `${expr} + ${weather}` : expr;
   });
 
-  // Anchor each cell with (1) a letter label (2) a row/column call-out
-  // (3) an ASCII diagram so Gemini has a visual map of positions.
+  // Position hints are given ONLY as spatial names (top-left, top-centre…).
+  // Earlier versions also printed A..I labels, but the model occasionally
+  // painted those letters onto the actual tiles — so we removed them.
   const L = lines.map((l) => l.toLowerCase());
-  const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
-  const diagram = `\`\`\`
-+------+------+------+
-|  A   |  B   |  C   |   ← top row
-+------+------+------+
-|  D   |  E   |  F   |   ← middle row
-+------+------+------+
-|  G   |  H   |  I   |   ← bottom row
-+------+------+------+
-   ↑      ↑      ↑
- left  centre right
-\`\`\``;
   const NAMES = [
     "top-left",
     "top-centre",
@@ -163,8 +152,8 @@ function buildPrompt(slots) {
     "bottom-centre",
     "bottom-right",
   ];
-  const layout = LETTERS.map(
-    (letter, i) => `  [${letter}] ${NAMES[i]} cell → ${L[i]}`
+  const layout = NAMES.map(
+    (name, i) => `  • ${name} cell → ${L[i]}`
   ).join("\n");
 
   return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square portraits of the same subject from the reference image. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
@@ -178,13 +167,7 @@ CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is,
 • If reference is a statue / deity / sculpture → keep sculptural look.
 Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
-You are given TWO reference images:
-  1. FIRST image — the SUBJECT whose face/style you must preserve in every cell.
-  2. SECOND image — a 3×3 layout scaffold with cell positions labelled A, B, C, D, E, F, G, H, I. This defines EXACTLY which cell is which.
-
-Treat the second image as the positional template. The output image has the same 3×3 structure. Each cell must render the expression mapped to its letter below — do not swap cells, do not merge, do not skip, do not copy the letters themselves.
-
-${diagram}
+The 3×3 layout has nine named cells. Each cell must show EXACTLY the expression listed for its position — do not swap cells, do not merge, do not skip any cell:
 
 ${layout}
 
@@ -193,10 +176,10 @@ A cell written as "<state> + <weather>" means that tile shows both at once — e
 Identity stays constant across every cell: same face/features, colours, hairstyle, clothing, and background treatment as the reference. Weather states (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin/surface (wet, flushed, frosted, cracked) — that is expected. The SUBJECT must still be clearly the same character.
 
 OUTPUT RULES — strictly enforced:
-- Final image is a 3×3 photographic grid only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, arrows, or the letter labels (A..I) anywhere on the image.
-- Do NOT write the expression names on the tiles. The layout above is instruction for you, not text to paint.
-- No visible borders, gutters, dividers, or ASCII lines between tiles — it is one seamless 1:1 image.
-- Each cell must correspond to EXACTLY the state mapped to its letter in the layout above. No swapping, no re-ordering, no skipping.
+- Final image is a 3×3 grid only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, or arrows anywhere on the image.
+- Do NOT write position names or expression names on the tiles. The layout above is instruction for you, not text to paint.
+- No visible borders, gutters, or dividers between tiles — it is one seamless 1:1 image.
+- Each cell must correspond to EXACTLY the state mapped to its position in the layout above. No swapping, no re-ordering, no skipping.
 - Two cells with the same mouth shape or same eye state are NOT allowed.
 - The art style MUST match the reference.`;
 }
