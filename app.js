@@ -1,5 +1,15 @@
 // Emoji Slot Machine — split a 3x3 grid image, then render a looping slot video.
 
+// Register service worker (PWA install + offline shell). Silently ignore
+// failures so the app still works when served from file:// or HTTP.
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch((err) => {
+      console.warn("SW registration failed:", err);
+    });
+  });
+}
+
 const $ = (id) => document.getElementById(id);
 
 const API_URL_KEY = "slot-api-url";
