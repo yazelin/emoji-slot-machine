@@ -297,6 +297,83 @@ main {
   box-shadow: var(--shadow-sm);
 }
 
+.mode-picker {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+  margin: 0.25rem 0 1.1rem;
+}
+
+.mode-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem 0.9rem;
+  background: #fbf7f2;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.18s ease, background 0.18s ease,
+    box-shadow 0.18s ease, transform 0.12s ease;
+}
+
+.mode-card:hover {
+  border-color: var(--border-strong);
+  background: #fdfaf5;
+  transform: translateY(-1px);
+}
+
+.mode-card:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 2px 10px rgba(232, 165, 152, 0.15);
+}
+
+.mode-card input {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 2;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.mode-card-demo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--bg-tint);
+  display: block;
+  border: 1px solid var(--border);
+}
+
+.mode-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 0 0.15rem;
+}
+
+.mode-card-body strong {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.mode-card-body span {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 560px) {
+  .mode-picker { grid-template-columns: 1fr; }
+}
+
 .video-controls {
   display: flex;
   flex-wrap: wrap;

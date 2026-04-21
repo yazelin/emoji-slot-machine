@@ -544,7 +544,7 @@ generateBtn.addEventListener("click", async () => {
   setProgress(0, "初始化…");
 
   try {
-    const mode = $("mode-input")?.value || "reel";
+    const mode = document.querySelector('input[name="mode"]:checked')?.value || "reel";
     const fps = clamp(parseInt($("fps-input").value, 10), 5, 30);
     const repeats = clamp(parseInt($("repeats-input").value, 10), 1, 20);
     const size = parseInt($("size-input").value, 10);

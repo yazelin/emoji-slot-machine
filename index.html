@@ -220,13 +220,28 @@
 
   <section class="card" id="step-video" hidden>
     <h2>③ 生成拉霸影片</h2>
-    <div class="video-controls">
-      <label>版本
-        <select id="mode-input">
-          <option value="reel" selected>拉霸滾輪 3×3</option>
-          <option value="classic">經典 9 格閃爍</option>
-        </select>
+    <p class="hint">兩種視覺風格任你挑，產出格式一樣（都是 FB 可自動播放、點擊即停）：</p>
+
+    <div class="mode-picker">
+      <label class="mode-card">
+        <input type="radio" name="mode" value="reel" checked />
+        <video class="mode-card-demo" src="demo-reel.webm" autoplay loop muted playsinline preload="metadata"></video>
+        <div class="mode-card-body">
+          <strong>拉霸滾輪 3×3</strong>
+          <span>像真的拉霸機 — 3 條縱向滾軸各自速度 blur 轉動，偶爾對齊連出一條線（5 種線型 × 9 表情 = 45 種連線隨機抽）。FB 點暫停大多停在轉動中的 blur，少數撞到連線的那 frame → 驚喜中獎。</span>
+        </div>
       </label>
+      <label class="mode-card">
+        <input type="radio" name="mode" value="classic" />
+        <video class="mode-card-demo" src="demo-classic.webm" autoplay loop muted playsinline preload="metadata"></video>
+        <div class="mode-card-body">
+          <strong>經典 9 格閃爍</strong>
+          <span>整個畫面快速閃過洗牌的 9 張表情。FB 點到哪停哪、停在哪格就是當下的心情占卜。最初版本，最極簡的梗圖玩法。</span>
+        </div>
+      </label>
+    </div>
+
+    <div class="video-controls">
       <label>FPS
         <input type="number" id="fps-input" value="15" min="5" max="30" />
       </label>
