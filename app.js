@@ -546,12 +546,12 @@ generateBtn.addEventListener("click", async () => {
   try {
     const mode = document.querySelector('input[name="mode"]:checked')?.value || "reel";
     const fps = clamp(parseInt($("fps-input").value, 10), 5, 30);
-    const repeats = clamp(parseInt($("repeats-input").value, 10), 1, 20);
+    const durationSec = clamp(parseFloat($("duration-input").value), 1, 30);
     const size = parseInt($("size-input").value, 10);
 
     const blob = mode === "reel"
-      ? await renderReelSlotVideo({ tiles: state.tiles, fps, repeats, size })
-      : await renderSlotVideo({ tiles: state.tiles, fps, repeats, size });
+      ? await renderReelSlotVideo({ tiles: state.tiles, fps, durationSec, size })
+      : await renderSlotVideo({ tiles: state.tiles, fps, durationSec, size });
     state.videoBlob = blob;
 
     const url = URL.createObjectURL(blob);
@@ -593,7 +593,7 @@ function pickMimeType() {
   return "";
 }
 
-async function renderSlotVideo({ tiles, fps, repeats, size }) {
+async function renderSlotVideo({ tiles, fps, durationSec, size }) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -619,11 +619,13 @@ async function renderSlotVideo({ tiles, fps, repeats, size }) {
   const stopped = new Promise((res) => (recorder.onstop = res));
   recorder.start();
 
-  // Build frame order: for each repeat, shuffle tiles so no two adjacent
-  // loops end/start with the same image.
+  // Target exactly durationSec of frames. Each shuffle loop yields 9 frames;
+  // we build enough loops to cover that and then trim precisely.
+  const totalFrames = Math.max(9, Math.round(durationSec * fps));
+  const loops = Math.ceil(totalFrames / 9);
   const frames = [];
   let prev = null;
-  for (let i = 0; i < repeats; i++) {
+  for (let i = 0; i < loops; i++) {
     const shuffled = shuffle([...tiles]);
     if (prev !== null && shuffled[0] === prev && shuffled.length > 1) {
       [shuffled[0], shuffled[1]] = [shuffled[1], shuffled[0]];
@@ -631,6 +633,7 @@ async function renderSlotVideo({ tiles, fps, repeats, size }) {
     frames.push(...shuffled);
     prev = shuffled[shuffled.length - 1];
   }
+  frames.length = totalFrames;
 
   const frameMs = 1000 / fps;
   const total = frames.length;
@@ -895,7 +898,7 @@ function drawWinningGlow(ctx, pattern, layout, alpha) {
   ctx.restore();
 }
 
-async function renderReelSlotVideo({ tiles, fps, repeats, size }) {
+async function renderReelSlotVideo({ tiles, fps, durationSec, size }) {
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
@@ -955,8 +958,10 @@ async function renderReelSlotVideo({ tiles, fps, repeats, size }) {
   const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
   const lcm = (a, b) => (a * b) / gcd(a, b);
   const cycleFrames = lcm(lcm(stepFrames[0], stepFrames[1]), stepFrames[2]) * N;
-  const cycleCount = Math.max(1, Math.floor(repeats / 5));
-  const totalFrames = cycleFrames * cycleCount;
+  // Target exactly durationSec of video. The pattern table is keyed on
+  // f % cycleFrames, so the video can end at any frame — seedPattern still
+  // guarantees a line at f=0 regardless of length.
+  const totalFrames = Math.max(cycleFrames, Math.round(durationSec * fps));
 
   const posAt = (f, r) => (startPos[r] + Math.floor(f / stepFrames[r])) % N;
 
