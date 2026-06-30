@@ -366,8 +366,11 @@ aiGenerateBtn.addEventListener("click", async () => {
     tick = null;
 
     if (!resp.ok) {
-      const detail = await resp.text();
-      throw new Error(`HTTP ${resp.status}: ${detail.slice(0, 300)}`);
+      let payload = {};
+      try { payload = JSON.parse(await resp.text()); } catch {}
+      // Worker returns friendly Chinese messages for quota (429) / disabled
+      // (503) / upstream (502) — show those instead of raw JSON.
+      throw new Error(payload.message || payload.error || `HTTP ${resp.status}`);
     }
 
     setAiProgress(90, "載入結果…");

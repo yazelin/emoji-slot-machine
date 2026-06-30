@@ -2,8 +2,23 @@ name = "emoji-slot-gemini"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
-# VERTEX_API_KEY is set via:
-#   npx wrangler secret put VERTEX_API_KEY
+# Secrets (set via `npx wrangler secret put <NAME>`):
+#   GEMINI_API_KEY  — key the self-hosted gemini-web validates (x-goog-api-key)
+#   VERTEX_API_KEY  — legacy Vertex AI key (only used if GEMINI_WEB_BASE_URL unset)
 #
-# Optional vars (non-secret):
-#   DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
+# Note: no Turnstile gate yet — abuse is bounded by the per-IP daily quota +
+# in-flight lock below. Add Turnstile (secret + frontend widget) later if needed.
+
+[vars]
+# Route image generation through the self-hosted gemini-web service. When set,
+# /generate calls its /api/edit (reference image + prompt) instead of Vertex.
+# Auth via the GEMINI_API_KEY secret.
+GEMINI_WEB_BASE_URL = "https://ching-tech.ddns.net/gemini-web"
+# "1" = AI 直接生成暫停、強制走 BYOG（後端壞掉時的急停開關）
+AI_DISABLED = "0"
+# DEFAULT_MODEL = "gemini-3.1-flash-image-preview"
+
+# Daily AI-quota + in-flight lock storage (per client IP).
+[[kv_namespaces]]
+binding = "QUOTA"
+id = "0159a1f4bc75459db50f26e545ae1bf0"

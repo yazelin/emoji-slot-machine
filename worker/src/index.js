@@ -5,6 +5,8 @@
 
 const DEFAULT_MODEL = "gemini-3.1-flash-image-preview";
 const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB decoded image size
+const DAILY_LIMIT = 5;                     // free AI generations per IP per UTC day
+const INFLIGHT_TTL_SECONDS = 180;          // safety net for the per-IP lock
 
 // Pool of expression descriptors. We randomly pick 9 per request so every
 // call returns a different mix — visibly distinct tiles each time you spin.
@@ -217,6 +219,61 @@ function json(body, status, extraHeaders = {}) {
   });
 }
 
+// ---------- Client IP ----------
+function getClientIp(request) {
+  return request.headers.get("CF-Connecting-IP") || "unknown";
+}
+
+// ---------- Daily quota via Cloudflare KV ----------
+// Keyed `quota:<ip>:<YYYY-MM-DD UTC>`, TTL 36h. If the QUOTA binding is
+// missing, quota is reported unlimited so the app still functions.
+function todayUTC() {
+  return new Date().toISOString().slice(0, 10);
+}
+function quotaKey(ip) {
+  return `quota:${ip}:${todayUTC()}`;
+}
+async function readQuota(env, ip) {
+  if (!env || !env.QUOTA) return { used: 0, limit: DAILY_LIMIT, kvAvailable: false };
+  const used = parseInt((await env.QUOTA.get(quotaKey(ip))) || "0", 10);
+  return { used, limit: DAILY_LIMIT, kvAvailable: true };
+}
+async function bumpQuota(env, ip) {
+  if (!env || !env.QUOTA) return DAILY_LIMIT;
+  const k = quotaKey(ip);
+  const used = parseInt((await env.QUOTA.get(k)) || "0", 10);
+  const next = used + 1;
+  await env.QUOTA.put(k, String(next), { expirationTtl: 60 * 60 * 36 });
+  return next;
+}
+// Refund a slot when the upstream call failed after we pre-bumped — only
+// successful generations burn the daily allowance.
+async function decrementQuota(env, ip) {
+  if (!env || !env.QUOTA) return;
+  const k = quotaKey(ip);
+  const used = parseInt((await env.QUOTA.get(k)) || "0", 10);
+  if (used <= 0) return;
+  await env.QUOTA.put(k, String(used - 1), { expirationTtl: 60 * 60 * 36 });
+}
+
+// ---------- Per-IP in-flight serialization ----------
+// The shared gemini-web backend is single-threaded; spam-clicks must not
+// queue N concurrent browser jobs. Hold `inflight:<ip>` while a request runs.
+function inflightKey(ip) {
+  return `inflight:${ip}`;
+}
+async function acquireInflight(env, ip) {
+  if (!env || !env.QUOTA) return true;
+  const k = inflightKey(ip);
+  if (await env.QUOTA.get(k)) return false;
+  await env.QUOTA.put(k, "1", { expirationTtl: INFLIGHT_TTL_SECONDS });
+  return true;
+}
+async function releaseInflight(env, ip) {
+  if (!env || !env.QUOTA) return;
+  await env.QUOTA.delete(inflightKey(ip));
+}
+
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin") || "*";
@@ -230,6 +287,9 @@ export default {
       const url = new URL(request.url);
       if (url.pathname === "/pool") {
         return json({ pool: poolManifest() }, 200, cors);
+      }
+      if (url.pathname === "/quota") {
+        return json({ quota: await readQuota(env, getClientIp(request)) }, 200, cors);
       }
       return json({ ok: true, service: "emoji-slot-gemini" }, 200, cors);
     }
@@ -248,8 +308,25 @@ export default {
       return json({ prompt: promptText }, 200, cors);
     }
 
-    if (!env.VERTEX_API_KEY) {
-      return json({ error: "server misconfigured: VERTEX_API_KEY missing" }, 500, cors);
+    // AI image generation temporarily disabled (kill switch) — steer users to
+    // BYOG. /prompt above still works so they can copy. Flip AI_DISABLED off in
+    // wrangler.toml to re-enable.
+    if (env.AI_DISABLED === "1") {
+      return json(
+        {
+          error: "ai disabled",
+          hint: "byog",
+          message:
+            "AI 直接生成暫停服務中（後端維修）。可改走免費 BYOG：複製 prompt，貼到 " +
+            "ChatGPT／Gemini 時務必「先附上你的參考圖再貼 prompt」，把產出的 3×3 圖存下來貼回來即可。",
+        },
+        503,
+        cors,
+      );
+    }
+
+    if (!env.VERTEX_API_KEY && !env.GEMINI_WEB_BASE_URL) {
+      return json({ error: "server misconfigured: set VERTEX_API_KEY or GEMINI_WEB_BASE_URL" }, 500, cors);
     }
 
     let body;
@@ -267,68 +344,157 @@ export default {
       return json({ error: "image too large (max ~7.5 MB)" }, 413, cors);
     }
 
-    const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
-    const chosenPrompt = typeof prompt === "string" && prompt.trim()
-      ? prompt
-      : buildPrompt(slots);
+    const ip = getClientIp(request);
 
-    const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
-
-    const payload = {
-      contents: [
+    // Per-IP in-flight lock first — cheapest defense against spam-clicking the
+    // single-threaded shared backend.
+    const gotLock = await acquireInflight(env, ip);
+    if (!gotLock) {
+      const quotaNow = await readQuota(env, ip);
+      return json(
         {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType, data: imageBase64 } },
-            { text: chosenPrompt },
-          ],
+          error: "in flight",
+          quota: quotaNow,
+          message: "上一個生成還在跑（最久約 60 秒）。等它完成或失敗再點，狂點不會更快。",
         },
-      ],
-      generationConfig: {
-        responseModalities: ["IMAGE"],
-        imageConfig: { aspectRatio: "1:1", imageSize: "2K" },
-      },
-    };
+        429,
+        cors,
+      );
+    }
 
-    let upstream;
     try {
-      upstream = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-    } catch (err) {
-      return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
-    }
+      // Daily quota gate.
+      const quotaBefore = await readQuota(env, ip);
+      if (quotaBefore.used >= quotaBefore.limit) {
+        return json(
+          {
+            error: "daily quota exceeded",
+            hint: "byog",
+            quota: quotaBefore,
+            message: `今天的 ${quotaBefore.limit} 次免費生成已用完。可複製 prompt + 附參考圖，自己到 ChatGPT／Gemini 跑（免費、不限次）。明天 UTC 0 點重置。`,
+          },
+          429,
+          cors,
+        );
+      }
+      // Pre-emptive bump (charge before the call) so a flood of simultaneous
+      // requests can't each slip through the gate. Refunded on recoverable errors.
+      const usedAfter = await bumpQuota(env, ip);
 
-    if (!upstream.ok) {
-      const text = await upstream.text();
+      const chosenModel = (model || env.DEFAULT_MODEL || DEFAULT_MODEL).trim();
+      const chosenPrompt = typeof prompt === "string" && prompt.trim()
+        ? prompt
+        : buildPrompt(slots);
+
+      let outMime, outData;
+
+      if (env.GEMINI_WEB_BASE_URL) {
+        // gemini-web is browser-driven Gemini Web. Its :generateContent only
+        // does TEXT→image (drops the reference photo), so a reference-conditioned
+        // grid must go through /api/edit. Payload {prompt, reference_image,
+        // timeout}; response {success, images:["data:...base64"], error}.
+        const editUrl = `${env.GEMINI_WEB_BASE_URL.replace(/\/+$/, "")}/api/edit`;
+        let upstream;
+        try {
+          upstream = await fetch(editUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY || "" },
+            body: JSON.stringify({ prompt: chosenPrompt, reference_image: imageBase64, timeout: 360 }),
+          });
+        } catch (err) {
+          await decrementQuota(env, ip);
+          return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
+        }
+        if (!upstream.ok) {
+          const text = await upstream.text();
+          await decrementQuota(env, ip);
+          return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
+        }
+        const result = await upstream.json();
+        const imgs = result?.images || [];
+        if (!result?.success || imgs.length === 0) {
+          // Browser-side failure (content blocked / no image / glitch). Not a
+          // billed call — it's our own service — so refund the quota.
+          await decrementQuota(env, ip);
+          return json(
+            {
+              error: result?.error || "no image in response",
+              detail: String(result?.message || result?.detail || "").slice(0, 500),
+              quota: { used: Math.max(0, usedAfter - 1), limit: DAILY_LIMIT },
+            },
+            502,
+            cors,
+          );
+        }
+        const img = imgs[0];
+        if (img.includes(",")) {
+          const [hdr, b64] = img.split(",", 2);
+          outMime = (hdr.match(/data:([^;]+)/) || [])[1] || "image/png";
+          outData = b64;
+        } else {
+          outMime = "image/png";
+          outData = img;
+        }
+      } else {
+        // Vertex fallback (legacy; only used when GEMINI_WEB_BASE_URL unset).
+        const url = `https://aiplatform.googleapis.com/v1/publishers/google/models/${encodeURIComponent(chosenModel)}:generateContent?key=${env.VERTEX_API_KEY}`;
+        const payload = {
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inlineData: { mimeType, data: imageBase64 } },
+                { text: chosenPrompt },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseModalities: ["IMAGE"],
+            imageConfig: { aspectRatio: "1:1", imageSize: "2K" },
+          },
+        };
+        let upstream;
+        try {
+          upstream = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        } catch (err) {
+          await decrementQuota(env, ip);
+          return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
+        }
+        if (!upstream.ok) {
+          const text = await upstream.text();
+          await decrementQuota(env, ip);
+          return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
+        }
+        const data = await upstream.json();
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const imagePart = parts.find((p) => p.inlineData);
+        if (!imagePart) {
+          return json(
+            { error: "no image in response", raw: JSON.stringify(data).slice(0, 1500), quota: { used: usedAfter, limit: DAILY_LIMIT } },
+            502,
+            cors,
+          );
+        }
+        outMime = imagePart.inlineData.mimeType || "image/png";
+        outData = imagePart.inlineData.data;
+      }
+
       return json(
-        { error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) },
-        502,
+        {
+          mimeType: outMime,
+          data: outData,
+          model: chosenModel,
+          quota: { used: usedAfter, limit: DAILY_LIMIT },
+        },
+        200,
         cors,
       );
+    } finally {
+      await releaseInflight(env, ip);
     }
-
-    const data = await upstream.json();
-    const parts = data?.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find((p) => p.inlineData);
-    if (!imagePart) {
-      return json(
-        { error: "no image in response", raw: JSON.stringify(data).slice(0, 1500) },
-        502,
-        cors,
-      );
-    }
-
-    return json(
-      {
-        mimeType: imagePart.inlineData.mimeType || "image/png",
-        data: imagePart.inlineData.data,
-        model: chosenModel,
-      },
-      200,
-      cors,
-    );
   },
 };
