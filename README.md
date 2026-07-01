@@ -60,8 +60,9 @@
 | 人機驗證 | **無 Turnstile**（靠每日配額 + in-flight 鎖限流） | **有 Turnstile** |
 | Prompt | 表情 + 天氣配對、強制沿用原圖畫風 | LINE 審核合規規則 + 風格轉換 + 每格印字 |
 
-**共通後端**（兩邊皆已遷移）：Cloudflare Worker → 自架 gemini-web `/api/edit`
-（未設則 fallback Vertex），每日配額 5 次/IP + in-flight 鎖，`AI_DISABLED` 急停開關。
+**共通後端**（兩邊皆已遷移）：Cloudflare Worker → 自架 gemini-web `/api/edit`；
+gemini-web 內部先走**免費瀏覽器路**，失敗時自動頂替**官方 Gemini API**（付費、需 key）。
+Worker 層有每日配額 5 次/IP + in-flight 鎖 + `AI_DISABLED` 急停開關。
 
 ## 為什麼在 Facebook 上行得通
 
