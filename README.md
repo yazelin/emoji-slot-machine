@@ -16,6 +16,7 @@
 ## 目錄
 
 - [它在做什麼](#它在做什麼)
+- [與姊妹專案 line-sticker-studio 的差異](#與姊妹專案-line-sticker-studio-的差異)
 - [為什麼在 Facebook 上行得通](#為什麼在-facebook-上行得通)
 - [功能](#功能)
 - [兩種視覺模式](#兩種視覺模式)
@@ -35,14 +36,32 @@
 
 一個純前端（static）網頁，核心兩件事：
 
-1. **上傳 1 張自拍** → 呼叫 Cloudflare Worker → Worker 帶 API Key 去打 Google
-   Vertex AI（`gemini-3.1-flash-image-preview`）→ 拿回一張 **3×3 九宮格圖**，
+1. **上傳 1 張自拍** → 呼叫 Cloudflare Worker → Worker 帶著參考圖打自架的
+   **gemini-web** 服務（`/api/edit`，瀏覽器驅動 Gemini 網頁版；未設定時
+   fallback 到 Google Vertex AI）→ 拿回一張 **3×3 九宮格圖**，
    9 格是同一個人、9 種誇張到不行的表情。
 2. **拆成 9 張圖 → 用 `<canvas>` + `MediaRecorder` 在瀏覽器裡輪播錄成一支
    WebM 拉霸影片**，可直接下載 / `navigator.share()` 到 FB。
 
 也可以跳過 AI，直接上傳你手邊任何一張 3×3 圖（例：用 Gemini / ChatGPT 自己
 生的），拉霸影片在你瀏覽器裡產出，不會經過任何後端。
+
+## 與姊妹專案 line-sticker-studio 的差異
+
+兩個專案共用**同一套核心引擎**（上傳角色圖 → 打 gemini-web `/api/edit` → 取回
+3×3 → 前端拆格），但長成兩個不同產品：
+
+| | 本專案 emoji-slot-machine | 姊妹 [line-sticker-studio](https://github.com/yazelin/line-sticker-studio) |
+|---|---|---|
+| 定位 | 表情**拉霸 → 動態 reel 影片** | 靜態 **LINE 貼圖 → 去背 → 上架** |
+| 每格內容 | 9 種表情（36 情緒 + 9 天氣隨機配對），**不印文字** | 8 格**可帶文字短語** + 表情，有 AI 主題產短語 |
+| 輸出 | `MediaRecorder` 錄成 **WebM 拉霸影片** | **chroma-key 去背 → 透明 PNG → JSZip 打包** → LINE Creators Market 上架 |
+| 格數 | 3×3 = 9 | 3×3 產 9、取 **8**（LINE 套組） |
+| 人機驗證 | **無 Turnstile**（靠每日配額 + in-flight 鎖限流） | **有 Turnstile** |
+| Prompt | 表情 + 天氣配對、強制沿用原圖畫風 | LINE 審核合規規則 + 風格轉換 + 每格印字 |
+
+**共通後端**（兩邊皆已遷移）：Cloudflare Worker → 自架 gemini-web `/api/edit`
+（未設則 fallback Vertex），每日配額 5 次/IP + in-flight 鎖，`AI_DISABLED` 急停開關。
 
 ## 為什麼在 Facebook 上行得通
 
@@ -97,26 +116,29 @@ Facebook 在 feed 上會對短影片自動播放，**使用者點一下就會暫
 ## 架構
 
 ```
-┌───────────────────────────┐        ┌───────────────────────────┐
-│  Static frontend (Pages)  │  POST  │   Cloudflare Worker       │
-│  index.html / app.js      │───────▶│   worker/src/index.js     │
-│                           │  JSON  │   (holds VERTEX_API_KEY)  │
-│  - 拆 3×3 圖 (canvas)     │◀───────│                           │
-│  - 合成拉霸影片           │        │   fetch → Vertex AI       │
-│  (MediaRecorder → WebM)   │        │   gemini-3.1-flash-image  │
+┌───────────────────────────┐        ┌───────────────────────────┐        ┌──────────────────────┐
+│  Static frontend (Pages)  │  POST  │   Cloudflare Worker       │  POST  │  自架 gemini-web      │
+│  index.html / app.js      │───────▶│   worker/src/index.js     │───────▶│  /api/edit           │
+│                           │  JSON  │                           │        │  (瀏覽器驅動 Gemini) │
+│  - 拆 3×3 圖 (canvas)     │◀───────│  - 每日配額 5/IP (KV)     │◀───────│  未設則 fallback     │
+│  - 合成拉霸影片           │        │  - in-flight 鎖 (每 IP)   │        │  → Vertex AI         │
+│  (MediaRecorder → WebM)   │        │  - AI_DISABLED 急停開關   │        └──────────────────────┘
 └───────────────────────────┘        └───────────────────────────┘
          ▲                                     ▲
-         │ PWA install / offline               │ API key never touches client
-         │ Web Share API                       │ CORS + rate-limit guard
+         │ PWA install / offline               │ 金鑰不進前端；限流保護單線後端
+         │ Web Share API                       │
 ```
 
 - **前端**：靜態檔，放 GitHub Pages。沒有 build step。
-- **Worker**：Cloudflare Worker 當代理層，**唯一**原因是要藏 Vertex AI 的
-  API Key。同時也處理 CORS、限制輸入大小 (10 MB) 與組 prompt。
+- **Worker**：Cloudflare Worker 當代理層 —— 藏金鑰、組 prompt、限制輸入大小 (10 MB)、
+  處理 CORS，並做防濫用（每日配額 + in-flight 鎖 + `AI_DISABLED` 急停）。
+- **生圖後端**：預設打自架 **gemini-web**（`GEMINI_WEB_BASE_URL` + `GEMINI_API_KEY`）；
+  兩者未設時 fallback 回 Vertex AI（`VERTEX_API_KEY`）。
 - **兩個端點**：
   - `POST /`：生成 3×3（帶圖 + slot 設定）
   - `POST /prompt`：只回傳組好的 prompt 文字（供「複製到 Gemini」使用）
   - `GET /pool`：回傳表情池 manifest，供前端畫自訂 UI
+  - `GET /quota`：回傳呼叫端當日剩餘配額
 
 ## 如何使用（使用者流程）
 
