@@ -557,9 +557,11 @@ generateBtn.addEventListener("click", async () => {
       : await renderSlotVideo({ tiles: state.tiles, fps, durationSec, size });
     state.videoBlob = blob;
 
-    const url = URL.createObjectURL(blob);
-    previewVideo.src = url;
-    downloadBtn.href = url;
+    previewVideo.src = URL.createObjectURL(blob);
+    // iOS Safari doesn't reliably honor `download` on blob: URLs (WebKit
+    // bug 167341) — it just plays/previews instead of saving. data: URLs
+    // are honored much more reliably.
+    downloadBtn.href = await blobToDataURL(blob);
     const prefix = mode === "reel" ? "slot-reel" : "slot-machine";
     downloadBtn.download = `${prefix}-${Date.now()}.webm`;
 
@@ -576,6 +578,14 @@ generateBtn.addEventListener("click", async () => {
 function clamp(v, lo, hi) {
   if (Number.isNaN(v)) return lo;
   return Math.max(lo, Math.min(hi, v));
+}
+
+function blobToDataURL(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
 }
 
 function setProgress(pct, text) {
