@@ -1,7 +1,7 @@
 // Service Worker for 表情拉霸機 — static-shell cache + network-first for everything else.
 // Bump CACHE_VERSION whenever any cached asset materially changes.
 
-const CACHE_VERSION = "slot-v4";
+const CACHE_VERSION = "slot-v5";
 const CORE_ASSETS = [
   "./",
   "./index.html",
