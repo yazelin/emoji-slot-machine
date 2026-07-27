@@ -140,24 +140,19 @@ function buildPrompt(slots) {
     return weather ? `${expr} + ${weather}` : expr;
   });
 
-  // Anchor each cell with (1) a letter label (2) a row/column call-out
-  // (3) an ASCII diagram so Gemini has a visual map of positions.
-  // We kept this in after A/B testing against the "same prompt pasted to
-  // gemini.google.com" baseline — dropping the letters tanked pairing
-  // fidelity to 1-2/9, keeping them held it at 6-9/9.
+  // Anchor each cell with (1) a letter label (2) a row/column call-out.
+  // The letters stay: dropping them tanked pairing fidelity to 1-2/9 in an
+  // earlier A/B against the "same prompt pasted to gemini.google.com" baseline.
+  //
+  // 2026-07: the ASCII grid diagram that used to sit here is GONE. Live A/B on
+  // gemini-web (same photo, same nine expressions): with the diagram, 4 of 8
+  // sheets came back with text painted into the tiles — either the cell labels
+  // "(A)(B)(C)" copied straight off the ASCII art, or whole caption lines
+  // "[A] Sleepy drowse". Without it: 0 of 4. Markdown / JSON rewrites scored
+  // the same 0 — they just happened to omit the diagram too, so the format was
+  // never the variable. A drawn grid inside the prompt reads as content to copy.
   const L = lines.map((l) => l.toLowerCase());
   const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
-  const diagram = `\`\`\`
-+------+------+------+
-|  A   |  B   |  C   |   ← top row
-+------+------+------+
-|  D   |  E   |  F   |   ← middle row
-+------+------+------+
-|  G   |  H   |  I   |   ← bottom row
-+------+------+------+
-   ↑      ↑      ↑
- left  centre right
-\`\`\``;
   const NAMES = [
     "top-left",
     "top-centre",
@@ -191,8 +186,6 @@ CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is,
 Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
 The 3×3 layout uses the following cell labels (A..I). Each cell must show EXACTLY the expression listed for its letter — do not swap cells, do not merge, do not skip any cell:
-
-${diagram}
 
 ${layout}
 
