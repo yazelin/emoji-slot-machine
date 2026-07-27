@@ -1,3 +1,4 @@
+import { isWideSheet } from "./sheet.js";
 // Cloudflare Worker: proxy for Vertex AI image generation.
 // Frontend calls us with { imageBase64, mimeType, prompt? }.
 // We add the API key (stored as a Worker Secret) and forward to Vertex AI,
@@ -172,7 +173,13 @@ function buildPrompt(slots) {
     (letter, i) => `  [${letter}] ${NAMES[i]} cell → ${L[i]}`
   ).join("\n");
 
-  return `Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square portraits of the same subject from the reference image. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
+  // 畫布比例是模型自己挑的，挑到寬幅（實測 1.78～1.90）時它會攤成 4～5 欄、
+  // 重複表情填滿，前端切九格就全錯位。把畫布規則提到第一行才壓得住。
+  return `OUTPUT CANVAS (HIGHEST PRIORITY): produce a SQUARE 1:1 image — width and height must be equal.
+The sheet is EXACTLY 3 columns × 3 rows = 9 cells. Never 4 columns, never 5 columns, never a wide/landscape canvas.
+Do not repeat any expression to fill extra space.
+
+Create a single 3×3 grid image: 3 rows × 3 columns of 9 equal-size square portraits of the same subject from the reference image. Each tile shows a dramatically different, theatrical, exaggerated facial expression — the nine must be obviously distinct at a glance.
 
 CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is, keep it:
 • If reference is a photograph → output photo-realistic portraits.
@@ -394,46 +401,51 @@ export default {
         // grid must go through /api/edit. Payload {prompt, reference_image,
         // timeout}; response {success, images:["data:...base64"], error}.
         const editUrl = `${env.GEMINI_WEB_BASE_URL.replace(/\/+$/, "")}/api/edit`;
-        let upstream;
-        try {
-          upstream = await fetch(editUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY || "" },
-            body: JSON.stringify({ prompt: chosenPrompt, reference_image: imageBase64, timeout: 360 }),
-          });
-        } catch (err) {
-          await decrementQuota(env, ip);
-          return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
-        }
-        if (!upstream.ok) {
-          const text = await upstream.text();
-          await decrementQuota(env, ip);
-          return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
-        }
-        const result = await upstream.json();
-        const imgs = result?.images || [];
-        if (!result?.success || imgs.length === 0) {
-          // Browser-side failure (content blocked / no image / glitch). Not a
-          // billed call — it's our own service — so refund the quota.
-          await decrementQuota(env, ip);
-          return json(
-            {
-              error: result?.error || "no image in response",
-              detail: String(result?.message || result?.detail || "").slice(0, 500),
-              quota: { used: Math.max(0, usedAfter - 1), limit: DAILY_LIMIT },
-            },
-            502,
-            cors,
-          );
-        }
-        const img = imgs[0];
-        if (img.includes(",")) {
-          const [hdr, b64] = img.split(",", 2);
-          outMime = (hdr.match(/data:([^;]+)/) || [])[1] || "image/png";
-          outData = b64;
-        } else {
-          outMime = "image/png";
-          outData = img;
+        // 寬幅畫布 = 排版壞掉（模型會攤成 4～5 欄並重複表情），重打一次。
+        // 直式畫布仍是 3×3、切九格照樣正確，所以只擋寬的。
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          let upstream;
+          try {
+            upstream = await fetch(editUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY || "" },
+              body: JSON.stringify({ prompt: chosenPrompt, reference_image: imageBase64, timeout: 360 }),
+            });
+          } catch (err) {
+            await decrementQuota(env, ip);
+            return json({ error: "upstream fetch failed", detail: String(err) }, 502, cors);
+          }
+          if (!upstream.ok) {
+            const text = await upstream.text();
+            await decrementQuota(env, ip);
+            return json({ error: "upstream error", status: upstream.status, detail: text.slice(0, 1500) }, 502, cors);
+          }
+          const result = await upstream.json();
+          const imgs = result?.images || [];
+          if (!result?.success || imgs.length === 0) {
+            // Browser-side failure (content blocked / no image / glitch). Not a
+            // billed call — it's our own service — so refund the quota.
+            await decrementQuota(env, ip);
+            return json(
+              {
+                error: result?.error || "no image in response",
+                detail: String(result?.message || result?.detail || "").slice(0, 500),
+                quota: { used: Math.max(0, usedAfter - 1), limit: DAILY_LIMIT },
+              },
+              502,
+              cors,
+            );
+          }
+          const img = imgs[0];
+          if (img.includes(",")) {
+            const [hdr, b64] = img.split(",", 2);
+            outMime = (hdr.match(/data:([^;]+)/) || [])[1] || "image/png";
+            outData = b64;
+          } else {
+            outMime = "image/png";
+            outData = img;
+          }
+          if (!isWideSheet(outData) || attempt === 2) break;
         }
       } else {
         // Vertex fallback (legacy; only used when GEMINI_WEB_BASE_URL unset).
