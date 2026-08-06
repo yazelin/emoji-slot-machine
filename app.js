@@ -2,7 +2,9 @@
 
 // Register service worker (PWA install + offline shell). Silently ignore
 // failures so the app still works when served from file:// or HTTP.
-if ("serviceWorker" in navigator && location.protocol === "https:") {
+// isSecureContext 而不是只認 https:localhost / 127.0.0.1 也是 secure context,
+// 用 protocol 擋會讓本機永遠測不到 SW(離線行為就永遠沒被驗過)。線上行為不變。
+if ("serviceWorker" in navigator && window.isSecureContext) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("sw.js").catch((err) => {
       console.warn("SW registration failed:", err);
