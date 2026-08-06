@@ -32,7 +32,9 @@ self.addEventListener("activate", (event) => {
       .then((names) =>
         Promise.all(
           names
-            .filter((name) => name !== CACHE_VERSION)
+            // 只清自己的 slot-*:CacheStorage 是 per-origin,yazelin.github.io 所有專案共用
+            // 同一份,無差別刪會把 gewu、neko 等別站的離線包整包清掉,而且毫無徵兆。
+            .filter((name) => name.startsWith("slot-") && name !== CACHE_VERSION)
             .map((name) => caches.delete(name))
         )
       )
