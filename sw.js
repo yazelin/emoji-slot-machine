@@ -1,11 +1,20 @@
 // Service Worker for 表情拉霸機 — static-shell cache + network-first for everything else.
 // Bump CACHE_VERSION whenever any cached asset materially changes.
 
-const CACHE_VERSION = "slot-v12";
+const CACHE_VERSION = "slot-v13";
 const CORE_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
+  "./assets/fonts/caveat-400.woff2",
+  "./assets/fonts/caveat-600.woff2",
+  "./assets/fonts/noto-sans-tc-300.woff2",
+  "./assets/fonts/noto-sans-tc-400.woff2",
+  "./assets/fonts/noto-sans-tc-500.woff2",
+  "./assets/fonts/noto-sans-tc-700.woff2",
+  "./assets/fonts/zen-kaku-gothic-new-400.woff2",
+  "./assets/fonts/zen-kaku-gothic-new-500.woff2",
+  "./assets/fonts/zen-kaku-gothic-new-700.woff2",
   "./app.js",
   "./manifest.json",
   "./icon-192.png",

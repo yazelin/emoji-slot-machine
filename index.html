@@ -71,9 +71,20 @@
   </defs>
 </svg>
 <title>表情拉霸機｜Emoji Slot Machine</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=Caveat:wght@400;600&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" />
+<style>
+/* 自架字型:Google Fonts CDN 是跨域,SW 快取不到 → 離線一定壞。
+   只切這個站用得到的字(這裡全部是靜態 UI 文字,沒有使用者輸入)。
+   要改字或加字:pwa-skill/tools/selfhost-font.py 重跑一次。 */
+@font-face{font-family:"Caveat";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/caveat-400.woff2") format("woff2")}
+@font-face{font-family:"Caveat";font-style:normal;font-weight:600;font-display:swap;src:url("assets/fonts/caveat-600.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:300;font-display:swap;src:url("assets/fonts/noto-sans-tc-300.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/noto-sans-tc-400.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:500;font-display:swap;src:url("assets/fonts/noto-sans-tc-500.woff2") format("woff2")}
+@font-face{font-family:"Noto Sans TC";font-style:normal;font-weight:700;font-display:swap;src:url("assets/fonts/noto-sans-tc-700.woff2") format("woff2")}
+@font-face{font-family:"Zen Kaku Gothic New";font-style:normal;font-weight:400;font-display:swap;src:url("assets/fonts/zen-kaku-gothic-new-400.woff2") format("woff2")}
+@font-face{font-family:"Zen Kaku Gothic New";font-style:normal;font-weight:500;font-display:swap;src:url("assets/fonts/zen-kaku-gothic-new-500.woff2") format("woff2")}
+@font-face{font-family:"Zen Kaku Gothic New";font-style:normal;font-weight:700;font-display:swap;src:url("assets/fonts/zen-kaku-gothic-new-700.woff2") format("woff2")}
+</style>
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
