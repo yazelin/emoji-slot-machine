@@ -2,6 +2,7 @@
   "name": "表情拉霸機 kimochi slot",
   "short_name": "表情拉霸機",
   "description": "把 3×3 表情圖做成 FB 可自動播放、點擊即停的拉霸影片",
+  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -29,6 +30,22 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/mobile.webp",
+      "sizes": "390x844",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "表情拉霸機 手機介面"
+    },
+    {
+      "src": "screenshots/desktop.webp",
+      "sizes": "1280x800",
+      "type": "image/webp",
+      "form_factor": "wide",
+      "label": "表情拉霸機 桌機介面"
     }
   ]
 }
