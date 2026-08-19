@@ -1,7 +1,10 @@
 // Service Worker for 表情拉霸機 — static-shell cache + network-first for everything else.
 // Bump CACHE_VERSION whenever any cached asset materially changes.
 
-const CACHE_VERSION = "slot-v16";
+const CACHE_VERSION = "slot-v17";
+// 資產以 URL 為鍵回查:ignoreSearch 讓帶 ?utm= 的路由也命中,ignoreVary 避開 Pages 的
+// Vary: Accept-Encoding(<video> 送 identity、暖快取存的帶 gzip → 預設比對 miss)。
+const RANGE_MATCH = { ignoreSearch: true, ignoreVary: true };
 const CORE_ASSETS = [
   "./",
   "./index.html",
@@ -23,13 +26,18 @@ const CORE_ASSETS = [
   "./apple-touch-icon.png",
   "./favicon.ico",
   "./og.png",
+  // 首頁 mode card 會 autoplay 這兩支示範影片 —— 一起 precache,離線也看得到;
+  // <video> 的 Range 請求靠下面 rangedResponse 從快取合成 206。排最後、檔案最大。
+  "./demo-reel.webm",
+  "./demo-classic.webm",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_VERSION)
-      .then((cache) => cache.addAll(CORE_ASSETS))
+      // allSettled:單一檔(如較大的 .webm)抓失敗不整批擋掉安裝更新
+      .then((cache) => Promise.allSettled(CORE_ASSETS.map((u) => cache.add(u))))
       .then(() => self.skipWaiting())
   );
 });
@@ -51,6 +59,29 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+// 從快取的完整回應合成 206:Chrome 的媒體管線對較大的檔一律用 Range 抓,拿到
+// 「200 但沒有 Content-Range」會直接判 Format error —— 斷網時大 .webm 播不出來的真因。
+async function rangedResponse(req, res) {
+  const range = req.headers.get("range");
+  if (!range) return res;
+  const m = /^bytes=(\d*)-(\d*)$/i.exec(range.trim());
+  if (!m) return res;
+  const buf = await res.arrayBuffer();
+  const len = buf.byteLength;
+  let start = m[1] ? Number(m[1]) : null;
+  let end = m[2] ? Number(m[2]) : null;
+  if (start === null && end !== null) { start = Math.max(0, len - end); end = len - 1; }
+  else { start ??= 0; end = end === null ? len - 1 : Math.min(end, len - 1); }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || start > end || start >= len) {
+    return new Response(null, { status: 416, headers: { "content-range": `bytes */${len}` } });
+  }
+  const h = new Headers(res.headers);
+  h.set("accept-ranges", "bytes");
+  h.set("content-range", `bytes ${start}-${end}/${len}`);
+  h.set("content-length", String(end - start + 1));
+  return new Response(buf.slice(start, end + 1), { status: 206, headers: h });
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -69,15 +100,15 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_VERSION).then((c) => c.put("./index.html", copy));
           return res;
         })
-        .catch(() => caches.match("./index.html"))
+        .catch(() => caches.match("./index.html", RANGE_MATCH))
     );
     return;
   }
 
-  // Same-origin static: cache-first, update in background.
+  // Same-origin static: cache-first(Range 請求合成 206),背景更新。
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(req).then((cached) => {
+      caches.match(req, RANGE_MATCH).then((cached) => {
         const fetchPromise = fetch(req)
           .then((res) => {
             if (res && res.status === 200 && res.type === "basic") {
@@ -87,7 +118,7 @@ self.addEventListener("fetch", (event) => {
             return res;
           })
           .catch(() => cached);
-        return cached || fetchPromise;
+        return cached ? rangedResponse(req, cached) : fetchPromise;
       })
     );
   }
