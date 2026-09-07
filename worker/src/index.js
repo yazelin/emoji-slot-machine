@@ -152,7 +152,9 @@ function buildPrompt(slots) {
   // the same 0 — they just happened to omit the diagram too, so the format was
   // never the variable. A drawn grid inside the prompt reads as content to copy.
   const L = lines.map((l) => l.toLowerCase());
-  const LETTERS = ["A", "B", "C", "D", "E", "F", "G", "H", "I"];
+  // 2026-09-07:原本每格前面掛 [A]..[I] 字母代號當對位錨點,gemini-3.1 在照片
+  // 參考圖上會把字母整個烤進九格角落(動漫圖不會)。OUTPUT RULES 明寫禁畫字也壓不住。
+  // 改成只用方位詞,方位詞從來沒被畫進圖裡。
   const NAMES = [
     "top-left",
     "top-centre",
@@ -164,8 +166,8 @@ function buildPrompt(slots) {
     "bottom-centre",
     "bottom-right",
   ];
-  const layout = LETTERS.map(
-    (letter, i) => `  [${letter}] ${NAMES[i]} cell → ${L[i]}`
+  const layout = NAMES.map(
+    (name, i) => `  ${name} cell → ${L[i]}`
   ).join("\n");
 
   // 畫布比例是模型自己挑的，挑到寬幅（實測 1.78～1.90）時它會攤成 4～5 欄、
@@ -185,7 +187,7 @@ CRITICAL — match the reference's ART STYLE exactly. Whatever the reference is,
 • If reference is a statue / deity / sculpture → keep sculptural look.
 Do NOT "upgrade" the reference into photography. Do NOT turn illustrations into real humans. The 9 tiles must look like they came from the SAME artist / camera / render pipeline as the reference.
 
-The 3×3 layout uses the following cell labels (A..I). Each cell must show EXACTLY the expression listed for its letter — do not swap cells, do not merge, do not skip any cell:
+The 3×3 layout is listed by position (row by row, left to right). Each cell must show EXACTLY the expression listed for its position — do not swap cells, do not merge, do not skip any cell:
 
 ${layout}
 
@@ -194,10 +196,10 @@ A cell written as "<state> + <weather>" means that tile shows both at once — e
 Identity stays constant across every cell: same face/features, colours, hairstyle, clothing, and background treatment as the reference. Weather states (lightning, rain, snow, wind, heat, cold, electrocution, sun-dazzle, goosebumps) MAY temporarily change hair (wet, windblown, standing on end) and skin/surface (wet, flushed, frosted, cracked) — that is expected. The SUBJECT must still be clearly the same character.
 
 OUTPUT RULES — strictly enforced:
-- Final image is a 3×3 photographic grid only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, arrows, or the letter labels (A..I) anywhere on the image.
-- Do NOT write the expression names on the tiles. The layout above is instruction for you, not text to paint.
+- Final image is a 3×3 grid of portraits only. Do NOT render any text, letters, numbers, labels, captions, subtitles, callouts, watermarks, emoji, or arrows anywhere on the image.
+- Do NOT write the expression names or position names on the tiles. The layout above is instruction for you, not text to paint.
 - No visible borders, gutters, dividers, or ASCII lines between tiles — it is one seamless 1:1 image.
-- Each cell must correspond to EXACTLY the state mapped to its letter in the layout above. No swapping, no re-ordering, no skipping.
+- Each cell must correspond to EXACTLY the state mapped to its position in the layout above. No swapping, no re-ordering, no skipping.
 - Two cells with the same mouth shape or same eye state are NOT allowed.
 - The art style MUST match the reference.`;
 }
