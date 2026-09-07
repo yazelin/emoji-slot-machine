@@ -81,6 +81,24 @@ const slotGrid = $("slot-grid");
 const slotsResetBtn = $("slots-reset");
 const openSettingsLink = $("open-settings-link");
 const slotStatusText = $("slot-status-text");
+const quotaHint = $("quota-hint");
+
+// 額度顯示。worker 的 GET /quota 一直都在,只是前端從沒問過;
+// 生成成功或被擋(429)的回應也帶 quota,拿到就更新。
+function showQuota(q) {
+  if (!quotaHint || !q || typeof q.used !== "number") return;
+  const left = Math.max(0, q.limit - q.used);
+  quotaHint.textContent = left > 0
+    ? `今天還可以免費生成 ${left} 次（每天 ${q.limit} 次，台灣時間早上 8 點重置）`
+    : `今天的 ${q.limit} 次免費生成用完了，台灣時間早上 8 點重置。可以照下面的方法自己到 Gemini 跑。`;
+}
+(async () => {
+  try {
+    const apiUrl = localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+    const resp = await fetch(apiUrl.replace(/\/$/, "") + "/quota");
+    if (resp.ok) showQuota((await resp.json()).quota);
+  } catch {}
+})();
 
 // NOTE: do NOT call selfieInput.click() here — the <label> wrapper already
 // opens the picker natively, so adding an extra .click() shows it twice.
@@ -370,6 +388,7 @@ aiGenerateBtn.addEventListener("click", async () => {
     if (!resp.ok) {
       let payload = {};
       try { payload = JSON.parse(await resp.text()); } catch {}
+      showQuota(payload.quota);
       // Worker returns friendly Chinese messages for quota (429) / disabled
       // (503) / upstream (502) — show those instead of raw JSON.
       throw new Error(payload.message || payload.error || `HTTP ${resp.status}`);
@@ -377,6 +396,7 @@ aiGenerateBtn.addEventListener("click", async () => {
 
     setAiProgress(90, "載入結果…");
     const data = await resp.json();
+    showQuota(data.quota);
     const gridUrl = `data:${data.mimeType};base64,${data.data}`;
     const img = await loadImage(gridUrl);
 

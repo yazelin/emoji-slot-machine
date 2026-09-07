@@ -1,7 +1,7 @@
 // Service Worker for 表情拉霸機 — static-shell cache + network-first for everything else.
 // Bump CACHE_VERSION whenever any cached asset materially changes.
 
-const CACHE_VERSION = "slot-v17";
+const CACHE_VERSION = "slot-v18";
 // 資產以 URL 為鍵回查:ignoreSearch 讓帶 ?utm= 的路由也命中,ignoreVary 避開 Pages 的
 // Vary: Accept-Encoding(<video> 送 identity、暖快取存的帶 gzip → 預設比對 miss)。
 const RANGE_MATCH = { ignoreSearch: true, ignoreVary: true };
